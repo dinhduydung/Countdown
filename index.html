@@ -3,34 +3,32 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ứng dụng đếm ngược Hoàn Chỉnh</title>
+<title>Countdown Pro - On/Off</title>
 <style>
-  body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
-  .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
+  body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 5px; }
+  .row { display: flex; flex-wrap: wrap; margin-bottom: 10px; background: #fff; padding: 10px; border-radius: 8px; }
   .container-cells { display: flex; flex-wrap: wrap; justify-content: flex-start; }
   .button, .cell {
     display: flex; justify-content: center; align-items: center;
-    border: 1px solid #ccc; margin: 2px;
-    width: 60px; height: 60px;
-    font-size: 12px; font-weight: bold; position: relative;
-    border-radius: 8px; user-select: none;
+    border: 1px solid #ccc; margin: 3px;
+    width: 65px; height: 65px;
+    font-size: 14px; font-weight: bold; position: relative;
+    border-radius: 10px; cursor: pointer; transition: 0.2s;
   }
-  .button { background-color: #4CAF50; color: white; cursor: pointer; }
-  .cell { background-color: #fff; color: #000; cursor: pointer; }
-  .selected { background-color: #FF69B4 !important; }
-  .expired { animation: blink 1s infinite; background-color: red !important; color: white; }
-  @keyframes blink { 50% { opacity: 0.4; } }
-  .undo { position: absolute; top: 2px; left: 3px; font-size: 10px; color: blue; }
-  .stop { position: absolute; bottom: 2px; left: 3px; font-size: 10px; color: red; }
-  .exchange { position: absolute; bottom: 2px; right: 3px; font-size: 10px; color: green; }
-  .cell-content-wrapper { display: flex; flex-direction: column; align-items: center; }
-  .time { font-size: 14px; font-weight: bold; margin-top: 2px; }
+  .button { background-color: #2ecc71; color: white; border: none; }
+  .cell { background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .selected { border: 3px solid #e91e63 !important; background-color: #fce4ec; }
+  .expired { animation: blink 0.8s infinite; background-color: #ff5252 !important; color: white; }
+  @keyframes blink { 50% { opacity: 0.5; } }
+  .stop { position: absolute; bottom: 2px; left: 4px; font-size: 11px; color: #7f8c8d; }
+  .exchange { position: absolute; bottom: 2px; right: 4px; font-size: 11px; color: #3498db; }
+  .time { font-size: 16px; margin-top: 15px; color: #2c3e50; }
+  .number { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #95a5a6; }
 </style>
 </head>
 <body>
-
-<div class="row" id="row-minutes-top"></div>
-<div class="container-cells" id="main-cells-container"></div>
+<div class="row" id="row-minutes"></div>
+<div class="container-cells" id="container"></div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
@@ -43,107 +41,67 @@
     projectId: "countdown1-45507", 
     storageBucket: "countdown1-45507.firebasestorage.app", 
     messagingSenderId: "565185644071", 
-    appId: "1:565185644071:web:dc90993788fc847248f002", 
+    appId: "1:565185644071:web:dc90993788fc847248f002" 
   };
 
   const app = initializeApp(firebaseConfig);
-  const database = getDatabase(app);
-  let sentStatus = {}; 
+  const db = getDatabase(app);
+  let selectedId = null, exchangeId = null, offset = 0;
+  const cells = {};
 
-  // QUAN TRỌNG: Dùng push để lệnh không bị đè nhau
-  function notifyESP(label, action) {
-    const commandsRef = ref(database, 'esp_commands');
-    push(commandsRef, {
-      id: String(label),
-      lenh: action,
-      t: serverTimestamp() 
-    });
-  }
+  onValue(ref(db, '.info/serverTimeOffset'), s => offset = s.val() || 0);
 
-  const timersRef = ref(database, 'timers');
-  const minuteButtons = [0.2, 5, 10, 20, 30, 60];
-  const rowTop = document.getElementById('row-minutes-top');
-  
-  minuteButtons.forEach(min => {
-    const btn = document.createElement('div');
-    btn.className = 'button';
-    btn.textContent = min + 'm';
-    btn.onclick = () => selectMinute(min);
-    rowTop.appendChild(btn);
+  // Tạo nút phút
+  [5, 10, 20, 30, 60].forEach(m => {
+    const b = document.createElement('div'); b.className = 'button'; b.textContent = m+'m';
+    b.onclick = () => {
+      if(!selectedId) return;
+      set(ref(db, 'timers/'+selectedId), { start: serverTimestamp(), dur: m*60 });
+      push(ref(db, 'esp_commands'), { id: selectedId, lenh: "OFF", t: serverTimestamp() });
+      selectedId = null; render();
+    };
+    document.getElementById('row-minutes').appendChild(b);
   });
 
-  let allCells = {};
-  let selectedCell = null;
+  // Tạo 160 ô
+  for(let i=1; i<=160; i++){
+    const id = String(i);
+    const el = document.createElement('div'); el.className = 'cell';
+    el.innerHTML = `<div class="number">${id}</div><div class="time"></div><div class="stop">Tắt</div><div class="exchange">Đổi</div>`;
+    
+    el.onclick = () => { selectedId = id; render(); };
+    el.querySelector('.stop').onclick = (e) => { e.stopPropagation(); remove(ref(db, 'timers/'+id)); push(ref(db, 'esp_commands'), { id: id, lenh: "OFF", t: serverTimestamp() }); };
+    el.querySelector('.exchange').onclick = (e) => { e.stopPropagation(); exchangeId = id; alert("Chọn ô muốn đổi đến"); };
 
-  function createCells() {
-    const container = document.getElementById('main-cells-container');
-    for (let i = 1; i <= 160; i++) {
-      const label = String(i);
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      cell.innerHTML = `<div class="undo">↩</div><div class="stop">Tắt</div><div class="exchange">Đổi</div>
-                        <div class="cell-content-wrapper"><div class="number">${label}</div><div class="time"></div></div>`;
-      
-      cell.querySelector('.stop').onclick = (e) => { e.stopPropagation(); resetCell(label); };
-      cell.onclick = () => {
-        Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
-        selectedCell = label;
-        cell.classList.add('selected');
-      };
-      
-      container.appendChild(cell);
-      allCells[label] = { cell, timeEl: cell.querySelector('.time'), timer: null };
+    if(exchangeId && exchangeId !== id) {
+        // Logic đổi ô ở đây nếu cần
     }
-  }
-  createCells();
 
-  function selectMinute(min) {
-    if (!selectedCell) return alert("Hãy chọn một ô!");
-    set(ref(database, 'timers/' + selectedCell), { 
-        durationSeconds: min * 60, 
-        startTime: serverTimestamp() 
+    document.getElementById('container').appendChild(el);
+    cells[id] = { el, timeEl: el.querySelector('.time') };
+  }
+
+  function render() {
+    Object.keys(cells).forEach(id => {
+      cells[id].el.classList.toggle('selected', selectedId === id);
     });
-    sentStatus[selectedCell] = false;
-    notifyESP(selectedCell, "OFF");
-    selectedCell = null;
-    Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
   }
 
-  function resetCell(label) {
-    remove(ref(database, 'timers/' + label));
-    notifyESP(label, "OFF");
-    sentStatus[label] = false;
-  }
-
-  let serverTimeOffset = 0;
-  onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
-
-  onValue(timersRef, (snapshot) => {
-    const data = snapshot.val() || {};
-    const now = Date.now() + serverTimeOffset;
-
-    Object.keys(allCells).forEach(label => {
-      const cellData = allCells[label];
-      const timerData = data[label];
-
-      if (timerData) {
-        const elapsed = Math.floor((now - timerData.startTime) / 1000);
-        const remaining = Math.max(0, timerData.durationSeconds - elapsed);
-
-        if (remaining <= 0) {
-          cellData.cell.classList.add('expired');
-          cellData.timeEl.textContent = "HẾT";
-          if (!sentStatus[label]) {
-            notifyESP(label, "ON");
-            sentStatus[label] = true;
-          }
-        } else {
-          cellData.cell.classList.remove('expired');
-          cellData.timeEl.textContent = Math.floor(remaining/60) + ":" + String(remaining%60).padStart(2,'0');
+  onValue(ref(db, 'timers'), snap => {
+    const data = snap.val() || {};
+    const now = Date.now() + offset;
+    Object.keys(cells).forEach(id => {
+      const t = data[id];
+      if(t){
+        const rem = Math.max(0, t.dur - Math.floor((now - t.start)/1000));
+        cells[id].timeEl.textContent = rem > 0 ? Math.floor(rem/60)+":"+(rem%60).toString().padStart(2,'0') : "HẾT";
+        cells[id].el.classList.toggle('expired', rem <= 0);
+        if(rem <= 0 && !cells[id].sent) {
+          push(ref(db, 'esp_commands'), { id, lenh: "ON", t: serverTimestamp() });
+          cells[id].sent = true;
         }
       } else {
-        cellData.cell.classList.remove('expired');
-        cellData.timeEl.textContent = "";
+        cells[id].timeEl.textContent = ""; cells[id].el.classList.remove('expired'); cells[id].sent = false;
       }
     });
   });
