@@ -3,105 +3,122 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Countdown Pro - On/Off</title>
+<title>Countdown - On/Off Chuẩn</title>
 <style>
-  body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 5px; }
-  .row { display: flex; flex-wrap: wrap; margin-bottom: 10px; background: #fff; padding: 10px; border-radius: 8px; }
-  .container-cells { display: flex; flex-wrap: wrap; justify-content: flex-start; }
-  .button, .cell {
-    display: flex; justify-content: center; align-items: center;
-    border: 1px solid #ccc; margin: 3px;
-    width: 65px; height: 65px;
-    font-size: 14px; font-weight: bold; position: relative;
-    border-radius: 10px; cursor: pointer; transition: 0.2s;
+  body { font-family: Arial, sans-serif; background: #f0f2f5; margin: 10px; }
+  .row-top { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+  .container-cells { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-start; }
+  .btn-min, .cell {
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    width: 65px; height: 65px; border-radius: 10px; cursor: pointer; font-weight: bold; transition: 0.2s;
   }
-  .button { background-color: #2ecc71; color: white; border: none; }
-  .cell { background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-  .selected { border: 3px solid #e91e63 !important; background-color: #fce4ec; }
-  .expired { animation: blink 0.8s infinite; background-color: #ff5252 !important; color: white; }
-  @keyframes blink { 50% { opacity: 0.5; } }
-  .stop { position: absolute; bottom: 2px; left: 4px; font-size: 11px; color: #7f8c8d; }
-  .exchange { position: absolute; bottom: 2px; right: 4px; font-size: 11px; color: #3498db; }
-  .time { font-size: 16px; margin-top: 15px; color: #2c3e50; }
-  .number { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #95a5a6; }
+  .btn-min { background: #4CAF50; color: white; border: none; font-size: 14px; }
+  .btn-min:active { transform: scale(0.9); }
+  .cell { background: white; border: 1px solid #ddd; position: relative; font-size: 11px; color: #333; }
+  .selected { border: 3px solid #FF69B4 !important; background: #fff0f5; }
+  .expired { background: #ff4d4d !important; color: white !important; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.6; } }
+  .time-text { font-size: 16px; margin-top: 5px; }
+  .label-text { color: #888; font-size: 10px; }
+  .btn-action { position: absolute; font-size: 10px; padding: 2px; }
+  .off-btn { bottom: 2px; left: 5px; color: red; }
+  .exch-btn { bottom: 2px; right: 5px; color: blue; }
 </style>
 </head>
 <body>
-<div class="row" id="row-minutes"></div>
-<div class="container-cells" id="container"></div>
+
+<div class="row-top" id="minutes-bar"></div>
+<div class="container-cells" id="cells-grid"></div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-  import { getDatabase, ref, set, onValue, remove, serverTimestamp, push } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+  import { getDatabase, ref, set, onValue, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
   const firebaseConfig = { 
     apiKey: "AIzaSyBIqFzPL-tob4Lu1Xjg5tjCJeknYhiZmV0", 
     authDomain: "countdown1-45507.firebaseapp.com", 
     databaseURL: "https://countdown1-45507-default-rtdb.asia-southeast1.firebasedatabase.app", 
     projectId: "countdown1-45507", 
-    storageBucket: "countdown1-45507.firebasestorage.app", 
-    messagingSenderId: "565185644071", 
     appId: "1:565185644071:web:dc90993788fc847248f002" 
   };
 
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
-  let selectedId = null, exchangeId = null, offset = 0;
-  const cells = {};
+  let selectedId = null, offset = 0;
+  const cellNodes = {};
 
+  // Đồng bộ thời gian máy chủ để tránh đứng giây
   onValue(ref(db, '.info/serverTimeOffset'), s => offset = s.val() || 0);
 
-  // Tạo nút phút
+  // Tạo nút chọn phút
   [5, 10, 20, 30, 60].forEach(m => {
-    const b = document.createElement('div'); b.className = 'button'; b.textContent = m+'m';
-    b.onclick = () => {
-      if(!selectedId) return;
-      set(ref(db, 'timers/'+selectedId), { start: serverTimestamp(), dur: m*60 });
-      push(ref(db, 'esp_commands'), { id: selectedId, lenh: "OFF", t: serverTimestamp() });
-      selectedId = null; render();
+    const btn = document.createElement('button');
+    btn.className = 'btn-min'; btn.textContent = m + 'm';
+    btn.onclick = () => {
+      if(!selectedId) return alert("Chọn 1 ô trước!");
+      set(ref(db, 'timers/' + selectedId), { start: serverTimestamp(), dur: m * 60 });
+      set(ref(db, 'esp_commands'), { id: selectedId, lenh: "OFF", t: Date.now() });
+      selectedId = null; updateSelection();
     };
-    document.getElementById('row-minutes').appendChild(b);
+    document.getElementById('minutes-bar').appendChild(btn);
   });
 
-  // Tạo 160 ô
-  for(let i=1; i<=160; i++){
+  // Tạo 160 ô lưới
+  const grid = document.getElementById('cells-grid');
+  for(let i=1; i<=160; i++) {
     const id = String(i);
-    const el = document.createElement('div'); el.className = 'cell';
-    el.innerHTML = `<div class="number">${id}</div><div class="time"></div><div class="stop">Tắt</div><div class="exchange">Đổi</div>`;
+    const div = document.createElement('div');
+    div.className = 'cell';
+    div.innerHTML = `<span class="label-text">${id}</span><span class="time-text"></span>
+                     <span class="btn-action off-btn">Tắt</span>`;
     
-    el.onclick = () => { selectedId = id; render(); };
-    el.querySelector('.stop').onclick = (e) => { e.stopPropagation(); remove(ref(db, 'timers/'+id)); push(ref(db, 'esp_commands'), { id: id, lenh: "OFF", t: serverTimestamp() }); };
-    el.querySelector('.exchange').onclick = (e) => { e.stopPropagation(); exchangeId = id; alert("Chọn ô muốn đổi đến"); };
+    div.onclick = () => { selectedId = id; updateSelection(); };
+    div.querySelector('.off-btn').onclick = (e) => {
+      e.stopPropagation();
+      remove(ref(db, 'timers/' + id));
+      set(ref(db, 'esp_commands'), { id: id, lenh: "OFF", t: Date.now() });
+    };
 
-    if(exchangeId && exchangeId !== id) {
-        // Logic đổi ô ở đây nếu cần
-    }
-
-    document.getElementById('container').appendChild(el);
-    cells[id] = { el, timeEl: el.querySelector('.time') };
+    grid.appendChild(div);
+    cellNodes[id] = { el: div, txt: div.querySelector('.time-text'), sent: false };
   }
 
-  function render() {
-    Object.keys(cells).forEach(id => {
-      cells[id].el.classList.toggle('selected', selectedId === id);
+  function updateSelection() {
+    Object.keys(cellNodes).forEach(id => {
+      cellNodes[id].el.classList.toggle('selected', selectedId === id);
     });
   }
 
+  // Lắng nghe dữ liệu và cập nhật giây
   onValue(ref(db, 'timers'), snap => {
     const data = snap.val() || {};
     const now = Date.now() + offset;
-    Object.keys(cells).forEach(id => {
-      const t = data[id];
-      if(t){
-        const rem = Math.max(0, t.dur - Math.floor((now - t.start)/1000));
-        cells[id].timeEl.textContent = rem > 0 ? Math.floor(rem/60)+":"+(rem%60).toString().padStart(2,'0') : "HẾT";
-        cells[id].el.classList.toggle('expired', rem <= 0);
-        if(rem <= 0 && !cells[id].sent) {
-          push(ref(db, 'esp_commands'), { id, lenh: "ON", t: serverTimestamp() });
-          cells[id].sent = true;
+
+    Object.keys(cellNodes).forEach(id => {
+      const timer = data[id];
+      const node = cellNodes[id];
+
+      if(timer && timer.start) {
+        const elapsed = Math.floor((now - timer.start) / 1000);
+        const rem = Math.max(0, timer.dur - elapsed);
+
+        if(rem > 0) {
+          node.txt.textContent = Math.floor(rem/60) + ":" + String(rem%60).padStart(2,'0');
+          node.el.classList.remove('expired');
+          node.sent = false;
+        } else {
+          node.txt.textContent = "HẾT";
+          node.el.classList.add('expired');
+          // Gửi lệnh ON lên ESP32
+          if(!node.sent) {
+            set(ref(db, 'esp_commands'), { id: id, lenh: "ON", t: Date.now() });
+            node.sent = true;
+          }
         }
       } else {
-        cells[id].timeEl.textContent = ""; cells[id].el.classList.remove('expired'); cells[id].sent = false;
+        node.txt.textContent = "";
+        node.el.classList.remove('expired');
+        node.sent = false;
       }
     });
   });
