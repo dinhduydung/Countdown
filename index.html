@@ -3,22 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hệ thống điều khiển 160 LED - Fix Triệt Để</title>
+<title>Hệ Thống Điều Khiển 160 LED - Bản Fix Lỗi Phút</title>
 <style>
-  /* Giữ nguyên CSS cũ để bạn dễ sử dụng */
   body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
   .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
   .container-cells { display: flex; flex-wrap: wrap; justify-content: flex-start; }
-  .button, .cell { display: flex; justify-content: center; align-items: center; border: 1px solid #ccc; margin: 2px; width: 60px; height: 60px; font-size: 12px; font-weight: bold; position: relative; border-radius: 8px; user-select: none; }
-  .button { background-color: #4CAF50; color: white; }
-  .select-multiple-button { background-color: lightgreen; color: #000; margin-left: 20px; min-width: 80px; }
+  
+  .button, .cell {
+    display: flex; justify-content: center; align-items: center;
+    border: 1px solid #ccc; margin: 2px;
+    width: 60px; height: 60px;
+    overflow: hidden;
+    font-size: 12px; font-weight: bold; position: relative;
+    border-radius: 8px; user-select: none;
+  }
+  .button { background-color: #4CAF50; color: white; cursor: pointer; }
+  .select-multiple-button { background-color: lightgreen; color: #000; margin-left: 20px; min-width: 80px; font-size: 11px; }
   .select-multiple-button.active { background-color: lightpink; }
-  .cell { background-color: #fff; color: #000; }
-  .selected { background-color: #FF69B4 !important; }
+  .cell { background-color: #fff; color: #000; cursor: pointer; }
+  .selected { background-color: #FF69B4 !important; color: #000; }
   .expired { animation: blink 1s infinite; background-color: red !important; color: white; }
   @keyframes blink { 50% { opacity: 0.4; } }
-  .stop { position: absolute; bottom: 2px; left: 3px; font-size: 10px; color: red; cursor: pointer; }
-  .time { font-size: 14px; font-weight: bold; margin-top: 2px; }
+
+  /* Các nút chức năng nhỏ trên ô */
+  .undo { position: absolute; top: 2px; left: 3px; font-size: 10px; color: blue; cursor: pointer; z-index: 10; }
+  .stop { position: absolute; bottom: 2px; left: 3px; font-size: 10px; color: red; cursor: pointer; z-index: 10; }
+  .exchange { position: absolute; bottom: 2px; right: 3px; font-size: 10px; color: green; cursor: pointer; z-index: 10; }
+  
+  .cell-content-wrapper { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; height: 100%; text-align: center; }
+  .number { font-size: 12px; line-height: 1.2; color: #000; }
+  .time { font-size: 14px; font-weight: bold; line-height: 1.2; color: #000; margin-top: 2px; }
+  
+  /* Bảng thống kê phía dưới */
+  .stats-table { margin-top: 20px; border-collapse: collapse; width: 100%; display: flex; flex-direction: column; }
+  .stats-header, .stats-row { display: flex; border: 1px solid #ccc; font-size: 14px; font-weight: bold; }
+  .stats-header-cell, .stats-cell { padding: 8px; border: 1px solid #ccc; flex: 1; text-align: center; }
+  .stats-header-cell { background-color: #f2f2f2; }
+  .select-car-button { cursor: pointer; background-color: #eee; }
+  .select-car-button.active { background-color: lightpink; }
+  .history-time { font-size: 10px; margin: 1px 0; }
 </style>
 </head>
 <body>
@@ -26,9 +49,26 @@
 <div class="row" id="row-minutes-top"></div>
 <div class="container-cells" id="main-cells-container"></div>
 
+<div class="stats-table">
+  <div class="stats-header">
+    <div class="stats-header-cell" style="flex:0.5">Xe</div>
+    <div class="stats-header-cell select-car-button" id="select-car-button" style="flex:1">Chọn xe xem lịch sử</div>
+    <div class="stats-header-cell" style="flex:1.2">Bắt đầu</div>
+    <div class="stats-header-cell" style="flex:1.2">Kết thúc</div>
+    <div class="stats-header-cell" style="flex:0.8">Phút</div>
+  </div>
+  <div class="stats-row" id="stats-row-container">
+    <div class="stats-cell" id="stats-car-number" style="flex:0.5"></div>
+    <div class="stats-cell" id="stats-selected-car" style="flex:1"></div>
+    <div id="stats-start-times" class="stats-cell" style="flex:1.2; display:flex; flex-direction:column"></div>
+    <div id="stats-end-times" class="stats-cell" style="flex:1.2; display:flex; flex-direction:column"></div>
+    <div id="stats-duration" class="stats-cell" style="flex:0.8; display:flex; flex-direction:column"></div>
+  </div>
+</div>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-  import { getDatabase, ref, set, onValue, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+  import { getDatabase, ref, set, onValue, remove, serverTimestamp, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
   const firebaseConfig = { 
     apiKey: "AIzaSyBIqFzPL-tob4Lu1Xjg5tjCJeknYhiZmV0", 
@@ -43,95 +83,271 @@
   let serverTimeOffset = 0;
   onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
 
-  // HÀM GỬI CHUỖI TRẠNG THÁI 160 KÝ TỰ
-  function updateLampsOnFirebase() {
-    let mask = "";
-    for (let i = 1; i <= 160; i++) {
-      mask += allCells[String(i)].isExpiredAndNotCleared ? "1" : "0";
-    }
-    // Gửi chuỗi ví dụ: "0001001..." lên node 'led_mask'
-    set(ref(database, 'led_mask'), mask);
-  }
-
   const timersRef = ref(database, 'timers');
+  const historyRef = ref(database, 'carHistory');
+  const statusRef = ref(database, 'esp_status');
+
   let allCells = {};
   let selectedCell = null;
   let isMultipleSelectionMode = false;
   let selectedCellsForMultiple = new Set();
+  let exchangeFrom = null;
+  let isSelectCarMode = false;
+  let carHistory = {};
 
+  // Tạo 160 ô
   const container = document.getElementById('main-cells-container');
   for (let i = 1; i <= 160; i++) {
     const label = String(i);
     const cell = document.createElement('div');
     cell.className = 'cell';
-    cell.innerHTML = `<div class="stop">Tắt</div><div class="number">${label}</div><div class="time" id="time-${label}"></div>`;
+    cell.innerHTML = `
+      <div class="undo">↩</div>
+      <div class="stop">Tắt</div>
+      <div class="exchange">Đổi</div>
+      <div class="cell-content-wrapper">
+        <div class="number">${label}</div>
+        <div class="time"></div>
+      </div>
+    `;
     
-    cell.querySelector('.stop').onclick = (e) => { e.stopPropagation(); remove(ref(database, 'timers/' + label)); };
-    cell.onclick = () => {
-      if (isMultipleSelectionMode) {
-        if (selectedCellsForMultiple.has(label)) { selectedCellsForMultiple.delete(label); cell.classList.remove('selected'); }
-        else { selectedCellsForMultiple.add(label); cell.classList.add('selected'); }
-      } else {
-        if (selectedCell) allCells[selectedCell].cell.classList.remove('selected');
-        selectedCell = label; cell.classList.add('selected'); 
-      }
-    };
+    cell.querySelector('.undo').onclick = (e) => { e.stopPropagation(); undoCell(label); };
+    cell.querySelector('.stop').onclick = (e) => { e.stopPropagation(); resetCell(label); };
+    cell.querySelector('.exchange').onclick = (e) => { e.stopPropagation(); startExchange(label); };
+    
+    cell.onclick = () => handleCellClick(label);
+    
     container.appendChild(cell);
-    allCells[label] = { cell, isExpiredAndNotCleared: false, timeEl: cell.querySelector('.time') };
+    allCells[label] = { 
+      cell, 
+      timeEl: cell.querySelector('.time'), 
+      numEl: cell.querySelector('.number'),
+      remaining: 0, 
+      isExpired: false,
+      lastState: null,
+      data: null 
+    };
   }
 
-  const rowTop = document.getElementById('row-minutes-top');
-  [0.2, 5, 10, 20, 30, 45, 60].forEach(min => {
-    const btn = document.createElement('div');
-    btn.className = 'button'; btn.textContent = min;
-    btn.onclick = () => {
-      const nowTs = serverTimestamp();
-      if (isMultipleSelectionMode) {
-        selectedCellsForMultiple.forEach(l => set(ref(database, 'timers/' + l), { durationSeconds: min * 60, startTime: nowTs }));
-        toggleMultipleSelectionMode();
-      } else if (selectedCell) {
-        set(ref(database, 'timers/' + selectedCell), { durationSeconds: min * 60, startTime: nowTs });
-        selectedCell = null; Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
+  function handleCellClick(label) {
+    if (isSelectCarMode) {
+      showHistoryFor(label);
+      return;
+    }
+    if (exchangeFrom) {
+      transferTimer(exchangeFrom, label);
+      return;
+    }
+    if (isMultipleSelectionMode) {
+      if (selectedCellsForMultiple.has(label)) {
+        selectedCellsForMultiple.delete(label);
+        allCells[label].cell.classList.remove('selected');
+      } else {
+        selectedCellsForMultiple.add(label);
+        allCells[label].cell.classList.add('selected');
       }
-    };
+    } else {
+      if (selectedCell === label) {
+        selectedCell = null;
+        allCells[label].cell.classList.remove('selected');
+      } else {
+        if (selectedCell) allCells[selectedCell].cell.classList.remove('selected');
+        selectedCell = label;
+        allCells[label].cell.classList.add('selected');
+      }
+    }
+  }
+
+  // Nút Phút
+  const rowTop = document.getElementById('row-minutes-top');
+  [0.2, 5, 10, 17, 20, 25, 32, 35, 40, 45, 50, 55, 62, 65, 70].forEach(min => {
+    const btn = document.createElement('div');
+    btn.className = 'button';
+    btn.textContent = min;
+    btn.onclick = () => applyMinutes(min);
     rowTop.appendChild(btn);
   });
 
   const mBtn = document.createElement('div');
-  mBtn.className = 'button select-multiple-button'; mBtn.textContent = 'Chọn nhiều';
-  mBtn.onclick = toggleMultipleSelectionMode;
+  mBtn.className = 'button select-multiple-button';
+  mBtn.textContent = 'Chọn nhiều';
+  mBtn.onclick = toggleMultipleMode;
   rowTop.appendChild(mBtn);
 
-  function toggleMultipleSelectionMode() {
+  function toggleMultipleMode() {
     isMultipleSelectionMode = !isMultipleSelectionMode;
     mBtn.classList.toggle('active', isMultipleSelectionMode);
-    selectedCellsForMultiple.clear();
-    Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
+    clearSelection();
   }
 
-  onValue(timersRef, (snapshot) => {
-    const data = snapshot.val() || {};
-    const now = Date.now() + serverTimeOffset;
-    let changed = false;
+  function clearSelection() {
+    selectedCell = null;
+    selectedCellsForMultiple.clear();
+    Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
+    exchangeFrom = null;
+  }
 
-    for (let i = 1; i <= 160; i++) {
-      const label = String(i);
-      const cellData = allCells[label];
-      const timer = data[label];
+  // HÀM QUAN TRỌNG: Gửi dữ liệu khi nhấn nút phút
+  async function applyMinutes(min) {
+    const nowTs = serverTimestamp();
+    const timerUpdates = {};
+    const statusUpdates = {};
+    const targets = isMultipleSelectionMode ? Array.from(selectedCellsForMultiple) : (selectedCell ? [selectedCell] : []);
+
+    if (targets.length === 0) return;
+
+    targets.forEach(label => {
+      // Chỉ cho phép đặt giờ nếu ô đang trống
+      if (!allCells[label].data) {
+        timerUpdates[label] = {
+          durationSeconds: Math.floor(min * 60),
+          originalMinutes: min,
+          startTime: nowTs
+        };
+        statusUpdates[label] = { lenh: "OFF", ts: nowTs };
+      }
+    });
+
+    if (Object.keys(timerUpdates).length > 0) {
+      await update(timersRef, timerUpdates);
+      await update(statusRef, statusUpdates);
+    }
+    
+    toggleMultipleMode(); // Tự động tắt chế độ chọn nhiều sau khi đặt xong
+    clearSelection();
+  }
+
+  function resetCell(label) {
+    const cell = allCells[label];
+    if (cell.data) {
+      // Lưu vào lịch sử trước khi xóa
+      recordHistory(label, cell.data.startTime, Date.now() + serverTimeOffset, cell.data.originalMinutes);
+      cell.lastState = { ...cell.data };
+    }
+    remove(ref(database, 'timers/' + label));
+    update(statusRef, { [label]: { lenh: "OFF", ts: serverTimestamp() } });
+  }
+
+  function undoCell(label) {
+    const last = allCells[label].lastState;
+    if (last && !allCells[label].data) {
+      set(ref(database, 'timers/' + label), { ...last, startTime: serverTimestamp() });
+    }
+  }
+
+  function startExchange(label) {
+    clearSelection();
+    exchangeFrom = label;
+    allCells[label].cell.classList.add('selected');
+  }
+
+  function transferTimer(from, to) {
+    if (allCells[from].data && !allCells[to].data) {
+      const data = { ...allCells[from].data };
+      set(ref(database, 'timers/' + to), data).then(() => {
+        remove(ref(database, 'timers/' + from));
+        update(statusRef, { [from]: { lenh: "OFF", ts: serverTimestamp() } });
+      });
+    }
+    clearSelection();
+  }
+
+  // Đồng bộ thời gian
+  onValue(timersRef, (snapshot) => {
+    const timers = snapshot.val() || {};
+    const now = Date.now() + serverTimeOffset;
+
+    Object.keys(allCells).forEach(label => {
+      const cell = allCells[label];
+      const timer = timers[label];
+      cell.data = timer;
 
       if (timer) {
         const remaining = Math.max(0, timer.durationSeconds - Math.floor((now - timer.startTime) / 1000));
-        cellData.timeEl.textContent = remaining > 0 ? Math.floor(remaining/60) + ":" + String(remaining%60).padStart(2,'0') : "";
-        const isExpired = (remaining <= 0);
-        if (cellData.isExpiredAndNotCleared !== isExpired) { cellData.isExpiredAndNotCleared = isExpired; changed = true; }
-        if (isExpired) cellData.cell.classList.add('expired'); else cellData.cell.classList.remove('expired');
+        cell.remaining = remaining;
+        
+        if (remaining > 0) {
+          cell.timeEl.textContent = `${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`;
+          cell.cell.classList.remove('expired');
+          if (cell.isExpired) {
+            cell.isExpired = false;
+            update(statusRef, { [label]: { lenh: "OFF", ts: serverTimestamp() } });
+          }
+        } else {
+          cell.timeEl.textContent = "HẾT";
+          cell.cell.classList.add('expired');
+          if (!cell.isExpired) {
+            cell.isExpired = true;
+            update(statusRef, { [label]: { lenh: "ON", ts: serverTimestamp() } });
+          }
+        }
       } else {
-        if (cellData.isExpiredAndNotCleared) { cellData.isExpiredAndNotCleared = false; changed = true; }
-        cellData.cell.classList.remove('expired'); cellData.timeEl.textContent = "";
+        cell.timeEl.textContent = "";
+        cell.cell.classList.remove('expired');
+        cell.isExpired = false;
       }
-    }
-    if (changed) updateLampsOnFirebase();
+    });
   });
+
+  // Xử lý Lịch sử
+  function recordHistory(label, start, end, dur) {
+    const refH = ref(database, 'carHistory/' + label);
+    onValue(refH, (snap) => {
+      let list = snap.val() || [];
+      list.push({ start, end, duration: dur });
+      if (list.length > 10) list.shift();
+      set(refH, list);
+    }, { onlyOnce: true });
+  }
+
+  const selectCarBtn = document.getElementById('select-car-button');
+  selectCarBtn.onclick = () => {
+    isSelectCarMode = !isSelectCarMode;
+    selectCarBtn.classList.toggle('active', isSelectCarMode);
+  };
+
+  onValue(historyRef, snap => carHistory = snap.val() || {});
+
+  function showHistoryFor(label) {
+    isSelectCarMode = false;
+    selectCarBtn.classList.remove('active');
+    document.getElementById('stats-car-number').textContent = label;
+    
+    const h = carHistory[label] || [];
+    const startDiv = document.getElementById('stats-start-times');
+    const endDiv = document.getElementById('stats-end-times');
+    const durDiv = document.getElementById('stats-duration');
+    
+    startDiv.innerHTML = ''; endDiv.innerHTML = ''; durDiv.innerHTML = '';
+    
+    h.forEach(item => {
+      const s = new Date(item.start);
+      const e = new Date(item.end);
+      startDiv.innerHTML += `<div class="history-time">${s.getHours()}:${String(s.getMinutes()).padStart(2,'0')}</div>`;
+      endDiv.innerHTML += `<div class="history-time">${e.getHours()}:${String(e.getMinutes()).padStart(2,'0')}</div>`;
+      durDiv.innerHTML += `<div class="history-time">${item.duration}</div>`;
+    });
+  }
+
+  // Chạy vòng lặp cập nhật màn hình mỗi giây
+  setInterval(() => {
+    const now = Date.now() + serverTimeOffset;
+    Object.keys(allCells).forEach(label => {
+      const cell = allCells[label];
+      if (cell.data && cell.remaining > 0) {
+        const rem = Math.max(0, cell.data.durationSeconds - Math.floor((now - cell.data.startTime) / 1000));
+        cell.timeEl.textContent = `${Math.floor(rem/60)}:${String(rem%60).padStart(2,'0')}`;
+        if (rem <= 0) {
+          cell.cell.classList.add('expired');
+          if (!cell.isExpired) {
+            cell.isExpired = true;
+            update(statusRef, { [label]: { lenh: "ON", ts: serverTimestamp() } });
+          }
+        }
+      }
+    });
+  }, 1000);
+
 </script>
 </body>
 </html>
