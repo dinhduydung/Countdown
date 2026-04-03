@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ứng dụng đếm ngược Offline - Fix Đồng Bộ</title>
+<title>Ứng dụng đếm ngược Offline - Fix Triệt Để</title>
 <style>
   body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
   .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
@@ -85,17 +85,15 @@
   const app = initializeApp(firebaseConfig);
   const database = getDatabase(app);
   
-  // Biến lưu trạng thái đèn hiện tại để tránh gửi dư thừa
   let currentLampStatus = {}; 
+  let serverTimeOffset = 0;
+  onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
 
-  function sendCommandToFirebase(label, action) {
-    if (currentLampStatus[label] === action) return; // Nếu trạng thái không đổi thì không gửi
-    
-    // Lưu vào node trạng thái riêng của từng ID để ESP32 đọc chính xác hơn
-    const statusRef = ref(database, 'esp_status/' + label);
-    set(statusRef, {
+  function sendCommand(label, action) {
+    if (currentLampStatus[label] === action) return;
+    set(ref(database, 'esp_status/' + label), {
       lenh: action,
-      last_update: serverTimestamp()
+      ts: serverTimestamp()
     });
     currentLampStatus[label] = action;
   }
@@ -129,14 +127,6 @@
   let isSelectCarMode = false;
   let selectedCarLabel = null;
   let carHistory = {};
-  const HISTORY_LIMIT = 10;
-
-  const selectCarButton = document.getElementById('select-car-button');
-  selectCarButton.addEventListener('click', () => {
-    isSelectCarMode = !isSelectCarMode;
-    selectCarButton.classList.toggle('active', isSelectCarMode);
-    clearStatsDisplay();
-  });
 
   function createCells(containerId, start, end) {
     const container = document.getElementById(containerId);
@@ -169,9 +159,7 @@
 
   function resetCell(label) {
     const cellData = allCells[label];
-    // Tắt đèn ngay lập tức trên Firebase
-    sendCommandToFirebase(label, "OFF");
-    
+    sendCommand(label, "OFF");
     if (cellData.remaining > 0 || cellData.isExpiredAndNotCleared) {
         if (cellData.duration > 0 && cellData.startTime > 0) {
             cellData.lastState = { durationSeconds: cellData.duration, originalMinutes: cellData.originalMinutes, origin: cellData.origin, startTime: cellData.startTime, remaining: cellData.remaining };
@@ -179,12 +167,11 @@
         }
     }
     remove(ref(database, 'timers/' + label));
-    if (selectedCell === label) { clearSelected(); }
+    if (selectedCell === label) clearSelected();
   }
 
   function startTimer(label, durationSeconds, originalMinutes, origin=null) {
-    // Đảm bảo khi bắt đầu, trạng thái là OFF
-    sendCommandToFirebase(label, "OFF");
+    sendCommand(label, "OFF"); // Tắt ngay khi bấm số phút
     set(ref(database, 'timers/' + label), { 
         durationSeconds: Math.floor(durationSeconds), 
         originalMinutes: originalMinutes, 
@@ -227,14 +214,14 @@
       toggleMultipleSelectionMode();
     } else {
       if (!selectedCell) return;
-      if (allCells[selectedCell].remaining > 0 || allCells[selectedCell].isExpiredAndNotCleared) return alert("Ô đang chạy!");
+      if (allCells[selectedCell].remaining > 0 || allCells[selectedCell].isExpiredAndNotCleared) return;
       startTimer(selectedCell, min * 60, min, null);
       clearSelected();
     }
   }
 
   function updateDisplay(label, sec) {
-    const cellData = allCells[label]; if (!cellData) return;
+    const cellData = allCells[label];
     const min = Math.floor(sec / 60); const secStr = String(sec % 60).padStart(2, '0');
     cellData.numberEl.classList.remove('display-line-1'); cellData.timeEl.classList.remove('display-line-2');
     cellData.numberEl.textContent = `${cellData.origin ? '('+cellData.origin+')-' : ''}${label}`;
@@ -249,7 +236,7 @@
           const lastHistory = currentHistory[currentHistory.length - 1];
           if (!lastHistory || lastHistory.start !== startTime) {
               currentHistory.push({ start: startTime, end: endTime, duration: durationMinutes });
-              if (currentHistory.length > HISTORY_LIMIT) currentHistory.shift();
+              if (currentHistory.length > 10) currentHistory.shift();
               set(specificHistoryRef, currentHistory);
           }
       }, { onlyOnce: true });
@@ -262,19 +249,14 @@
     allCells[label].lastState = null;
   }
 
-  function startExchange(label) {
-    clearSelected(); exchangeFrom = label; allCells[label].cell.classList.add('selected');
-  }
+  function startExchange(label) { clearSelected(); exchangeFrom = label; allCells[label].cell.classList.add('selected'); }
 
   function transferTimer(from, to) {
     onValue(ref(database, 'timers/' + from), (snapshot) => {
         const data = snapshot.val();
         if (data && typeof data.startTime === 'number') {
             set(ref(database, 'timers/' + to), { durationSeconds: data.durationSeconds, originalMinutes: data.originalMinutes, origin: data.origin || from, startTime: data.startTime })
-            .then(() => {
-                remove(ref(database, 'timers/' + from));
-                sendCommandToFirebase(from, "OFF");
-            });
+            .then(() => { remove(ref(database, 'timers/' + from)); sendCommand(from, "OFF"); });
         }
         exchangeFrom = null; clearSelected();
     }, { onlyOnce: true });
@@ -290,38 +272,33 @@
     selectMultipleBtn.classList.toggle('active', isMultipleSelectionMode);
   }
 
-  let serverTimeOffset = 0;
-  onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
-
+  // LOGIC ĐỒNG BỘ CHÍNH
   onValue(timersRef, (snapshot) => {
     const firebaseData = snapshot.val() || {};
-    const clientTimeAdjusted = Date.now() + serverTimeOffset;
+    const now = Date.now() + serverTimeOffset;
 
     Object.keys(allCells).forEach(label => {
       const cellData = allCells[label];
       const data = firebaseData[label];
 
-      if (data && typeof data.startTime === 'number') {
-        const elapsed = Math.floor((clientTimeAdjusted - data.startTime) / 1000);
+      if (data && data.startTime) {
+        const elapsed = Math.floor((now - data.startTime) / 1000);
         const remaining = Math.max(0, data.durationSeconds - elapsed);
 
         if (remaining <= 0) {
+            // Chỉ ON khi thực sự hết thời gian và timer đang tồn tại
             if (cellData.timer) { clearInterval(cellData.timer); cellData.timer = null; }
             cellData.cell.classList.add('expired');
             cellData.timeEl.textContent = '';
             cellData.remaining = 0;
             cellData.isExpiredAndNotCleared = true;
-            
-            // GỬI LỆNH ON KHI HẾT GIỜ
-            sendCommandToFirebase(label, "ON");
+            sendCommand(label, "ON");
         } else {
             cellData.cell.classList.remove('expired');
             cellData.isExpiredAndNotCleared = false;
-            
-            // ĐẢM BẢO OFF KHI ĐANG CHẠY
-            sendCommandToFirebase(label, "OFF");
+            sendCommand(label, "OFF"); // Đảm bảo luôn OFF khi còn thời gian
 
-            if (cellData.remaining !== remaining || cellData.timer === null) {
+            if (cellData.remaining !== remaining || !cellData.timer) {
                 if (cellData.timer) clearInterval(cellData.timer);
                 cellData.remaining = remaining;
                 cellData.duration = data.durationSeconds;
@@ -331,14 +308,14 @@
                 updateDisplay(label, remaining);
 
                 cellData.timer = setInterval(() => {
-                    const curElapsed = Math.floor(((Date.now() + serverTimeOffset) - cellData.startTime) / 1000);
-                    const curRem = Math.max(0, cellData.duration - curElapsed);
+                    const curNow = Date.now() + serverTimeOffset;
+                    const curRem = Math.max(0, cellData.duration - Math.floor((curNow - cellData.startTime) / 1000));
                     cellData.remaining = curRem;
                     updateDisplay(label, curRem);
                     if (curRem <= 0) { 
                         clearInterval(cellData.timer); cellData.timer = null; 
                         cellData.cell.classList.add('expired'); cellData.isExpiredAndNotCleared = true;
-                        sendCommandToFirebase(label, "ON");
+                        sendCommand(label, "ON");
                     }
                 }, 1000);
             }
@@ -350,11 +327,16 @@
         cellData.numberEl.textContent = label;
         cellData.remaining = 0;
         cellData.isExpiredAndNotCleared = false;
-        
-        // ĐẢM BẢO OFF KHI KHÔNG CÓ TIMER
-        sendCommandToFirebase(label, "OFF");
+        sendCommand(label, "OFF");
       }
     });
+  });
+
+  const selectCarButton = document.getElementById('select-car-button');
+  selectCarButton.addEventListener('click', () => {
+    isSelectCarMode = !isSelectCarMode;
+    selectCarButton.classList.toggle('active', isSelectCarMode);
+    clearStatsDisplay();
   });
 
   onValue(historyRef, (snapshot) => {
