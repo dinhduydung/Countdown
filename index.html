@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ứng dụng đếm ngược Offline - Fixed</title>
+<title>Ứng dụng đếm ngược Offline - Fix Đồng Bộ</title>
 <style>
   body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
   .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
@@ -70,7 +70,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-  import { getDatabase, ref, set, onValue, remove, serverTimestamp, update, push } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+  import { getDatabase, ref, set, onValue, remove, serverTimestamp, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
   const firebaseConfig = { 
     apiKey: "AIzaSyBIqFzPL-tob4Lu1Xjg5tjCJeknYhiZmV0", 
@@ -85,21 +85,19 @@
   const app = initializeApp(firebaseConfig);
   const database = getDatabase(app);
   
-  // Trạng thái gửi lệnh để tránh gửi lặp lại trong một chu kỳ
-  let lastSentAction = {}; 
+  // Biến lưu trạng thái đèn hiện tại để tránh gửi dư thừa
+  let currentLampStatus = {}; 
 
-  function notifyESP(label, action) {
-    // Chỉ gửi nếu hành động thay đổi để tránh làm nghẽn ESP32
-    if (lastSentAction[label] === action) return;
+  function sendCommandToFirebase(label, action) {
+    if (currentLampStatus[label] === action) return; // Nếu trạng thái không đổi thì không gửi
     
-    const commandsRef = ref(database, 'esp_commands');
-    push(commandsRef, {
-      id: String(label),
+    // Lưu vào node trạng thái riêng của từng ID để ESP32 đọc chính xác hơn
+    const statusRef = ref(database, 'esp_status/' + label);
+    set(statusRef, {
       lenh: action,
-      ts: serverTimestamp(),
-      processed: false // Thêm cờ để ESP32 xác nhận đã đọc
+      last_update: serverTimestamp()
     });
-    lastSentAction[label] = action;
+    currentLampStatus[label] = action;
   }
 
   const timersRef = ref(database, 'timers');
@@ -171,8 +169,8 @@
 
   function resetCell(label) {
     const cellData = allCells[label];
-    // Gửi lệnh OFF ngay lập tức khi bấm nút Tắt
-    notifyESP(label, "OFF");
+    // Tắt đèn ngay lập tức trên Firebase
+    sendCommandToFirebase(label, "OFF");
     
     if (cellData.remaining > 0 || cellData.isExpiredAndNotCleared) {
         if (cellData.duration > 0 && cellData.startTime > 0) {
@@ -185,15 +183,14 @@
   }
 
   function startTimer(label, durationSeconds, originalMinutes, origin=null) {
-    // Khi bắt đầu timer, đảm bảo đèn đang OFF (theo logic của bạn)
-    lastSentAction[label] = "OFF"; 
+    // Đảm bảo khi bắt đầu, trạng thái là OFF
+    sendCommandToFirebase(label, "OFF");
     set(ref(database, 'timers/' + label), { 
         durationSeconds: Math.floor(durationSeconds), 
         originalMinutes: originalMinutes, 
         origin: origin, 
         startTime: serverTimestamp() 
     });
-    notifyESP(label, "OFF"); 
   }
 
   function selectCell(label) {
@@ -276,8 +273,7 @@
             set(ref(database, 'timers/' + to), { durationSeconds: data.durationSeconds, originalMinutes: data.originalMinutes, origin: data.origin || from, startTime: data.startTime })
             .then(() => {
                 remove(ref(database, 'timers/' + from));
-                // Đảm bảo đèn cũ tắt và đèn mới theo trạng thái hiện tại
-                notifyESP(from, "OFF");
+                sendCommandToFirebase(from, "OFF");
             });
         }
         exchangeFrom = null; clearSelected();
@@ -315,12 +311,15 @@
             cellData.timeEl.textContent = '';
             cellData.remaining = 0;
             cellData.isExpiredAndNotCleared = true;
-            notifyESP(label, "ON");
+            
+            // GỬI LỆNH ON KHI HẾT GIỜ
+            sendCommandToFirebase(label, "ON");
         } else {
             cellData.cell.classList.remove('expired');
             cellData.isExpiredAndNotCleared = false;
-            // Trong lúc chạy thì đèn phải OFF
-            if (lastSentAction[label] === "ON") notifyESP(label, "OFF");
+            
+            // ĐẢM BẢO OFF KHI ĐANG CHẠY
+            sendCommandToFirebase(label, "OFF");
 
             if (cellData.remaining !== remaining || cellData.timer === null) {
                 if (cellData.timer) clearInterval(cellData.timer);
@@ -339,7 +338,7 @@
                     if (curRem <= 0) { 
                         clearInterval(cellData.timer); cellData.timer = null; 
                         cellData.cell.classList.add('expired'); cellData.isExpiredAndNotCleared = true;
-                        notifyESP(label, "ON");
+                        sendCommandToFirebase(label, "ON");
                     }
                 }, 1000);
             }
@@ -351,8 +350,9 @@
         cellData.numberEl.textContent = label;
         cellData.remaining = 0;
         cellData.isExpiredAndNotCleared = false;
-        // Khi không có dữ liệu timer, đảm bảo đèn OFF
-        if (lastSentAction[label] !== "OFF") notifyESP(label, "OFF");
+        
+        // ĐẢM BẢO OFF KHI KHÔNG CÓ TIMER
+        sendCommandToFirebase(label, "OFF");
       }
     });
   });
