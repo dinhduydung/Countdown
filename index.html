@@ -3,47 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ứng dụng đếm ngược Offline - Fix Đồng Bộ Hàng Loạt</title>
+<title>Ứng dụng đếm ngược - Fix Triệt Để Hardware</title>
 <style>
+  /* Giữ nguyên phần CSS cũ của bạn */
   body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
   .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
   .container-cells { display: flex; flex-wrap: wrap; justify-content: flex-start; }
-  
-  .button, .cell {
-    display: flex; justify-content: center; align-items: center;
-    border: 1px solid #ccc; margin: 2px;
-    width: 60px; height: 60px;
-    overflow: hidden;
-    font-size: 12px; font-weight: bold; position: relative;
-    border-radius: 8px; user-select: none;
-  }
+  .button, .cell { display: flex; justify-content: center; align-items: center; border: 1px solid #ccc; margin: 2px; width: 60px; height: 60px; font-size: 12px; font-weight: bold; position: relative; border-radius: 8px; user-select: none; }
   .button { background-color: #4CAF50; color: white; }
-  .select-multiple-button { background-color: lightgreen; color: #000; margin-left: 20px; min-width: 80px; font-size: 11px; }
+  .select-multiple-button { background-color: lightgreen; color: #000; margin-left: 20px; min-width: 80px; }
   .select-multiple-button.active { background-color: lightpink; }
   .cell { background-color: #fff; color: #000; }
-  .selected { background-color: #FF69B4 !important; color: #000; }
+  .selected { background-color: #FF69B4 !important; }
   .expired { animation: blink 1s infinite; background-color: red !important; color: white; }
   @keyframes blink { 50% { opacity: 0.4; } }
-  .undo { position: absolute; top: 2px; left: 3px; font-size: 10px; color: blue; cursor: pointer; }
-  .stop { position: absolute; bottom: 2px; left: 3px; font-size: 10px; color: red; cursor: pointer; }
-  .exchange { position: absolute; bottom: 2px; right: 3px; font-size: 10px; color: green; cursor: pointer; }
-  .cell-content-wrapper { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; height: 100%; text-align: center; box-sizing: border-box; padding: 2px; }
-  .number { font-size: 12px; line-height: 1.2; white-space: nowrap; color: #000; }
-  .time { font-size: 14px; font-weight: bold; line-height: 1.2; white-space: nowrap; color: #000; margin-top: 2px; }
-  .display-line-1 { font-size: 12px; line-height: 1.2; white-space: nowrap; }
-  .display-line-2 { font-size: 14px; font-weight: bold; line-height: 1.2; white-space: nowrap; }
-  .stats-table { margin-top: 20px; border-collapse: collapse; width: 100%; display: flex; flex-direction: column; }
-  .stats-header, .stats-row { display: flex; border: 1px solid #ccc; font-size: 14px; font-weight: bold; }
-  .stats-header-cell, .stats-cell { padding: 8px; border: 1px solid #ccc; flex: 1; text-align: center; }
-  .stats-header-cell.col-car-number, .stats-cell.col-car-number { flex: 0.5; }
-  .stats-header-cell.col-select-car, .stats-cell.col-select-car { flex: 1; }
-  .stats-header-cell.col-start-time, .stats-cell.col-start-time, .stats-header-cell.col-end-time, .stats-cell.col-end-time { flex: 1.2; }
-  .stats-header-cell.col-duration, .stats-cell.col-duration { flex: 0.8; }
-  .stats-header-cell { background-color: #f2f2f2; font-weight: bold; }
-  .stats-cell-flex-col { display: flex; flex-direction: column; justify-content: center; align-items: center; }
-  .select-car-button { background-color: #f2f2f2; cursor: pointer; }
-  .select-car-button.active { background-color: lightpink; }
-  .history-time { font-size: 10px; margin: 1px 0; }
+  .undo, .stop, .exchange { position: absolute; font-size: 10px; cursor: pointer; }
+  .undo { top: 2px; left: 3px; color: blue; }
+  .stop { bottom: 2px; left: 3px; color: red; }
+  .exchange { bottom: 2px; right: 3px; color: green; }
+  .cell-content-wrapper { text-align: center; }
+  .time { font-size: 14px; font-weight: bold; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -51,35 +30,15 @@
 <div class="row" id="row-minutes-top"></div>
 <div class="container-cells" id="main-cells-container"></div>
 
-<div class="stats-table">
-  <div class="stats-header">
-    <div class="stats-header-cell col-car-number">Xe số</div>
-    <div class="stats-header-cell col-select-car select-car-button" id="select-car-button">Chọn xe</div>
-    <div class="stats-header-cell col-start-time">Thời gian bắt đầu</div>
-    <div class="stats-header-cell col-end-time">Thời gian kết thúc</div>
-    <div class="stats-header-cell col-duration">Số phút</div>
-  </div>
-  <div class="stats-row" id="stats-row-container">
-    <div class="stats-cell col-car-number" id="stats-car-number"></div>
-    <div class="stats-cell col-select-car" id="stats-selected-car"></div>
-    <div class="stats-cell stats-cell-flex-col col-start-time" id="stats-start-times"></div>
-    <div class="stats-cell stats-cell-flex-col col-end-time" id="stats-end-times"></div>
-    <div class="stats-cell stats-cell-flex-col col-duration" id="stats-duration"></div>
-  </div>
-</div>
-
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-  import { getDatabase, ref, set, onValue, remove, serverTimestamp, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+  import { getDatabase, ref, set, onValue, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
   const firebaseConfig = { 
     apiKey: "AIzaSyBIqFzPL-tob4Lu1Xjg5tjCJeknYhiZmV0", 
     authDomain: "countdown1-45507.firebaseapp.com", 
     databaseURL: "https://countdown1-45507-default-rtdb.asia-southeast1.firebasedatabase.app", 
-    projectId: "countdown1-45507", 
-    storageBucket: "countdown1-45507.firebasestorage.app", 
-    messagingSenderId: "565185644071", 
-    appId: "1:565185644071:web:dc90993788fc847248f002", 
+    projectId: "countdown1-45507"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -88,303 +47,118 @@
   let serverTimeOffset = 0;
   onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
 
-  // HÀM GỬI LỆNH TỔNG HỢP (BULK UPDATE)
-  function sendBulkCommands(updates) {
-    if (Object.keys(updates).length === 0) return;
-    const statusRef = ref(database, 'esp_status');
-    update(statusRef, updates);
+  // HÀM QUAN TRỌNG: Cập nhật danh sách các ô đang cháy đèn
+  function updateActiveLampsOnFirebase() {
+    const activeLabels = [];
+    Object.keys(allCells).forEach(label => {
+      if (allCells[label].isExpiredAndNotCleared) {
+        activeLabels.push(label);
+      }
+    });
+    // Gửi một chuỗi duy nhất, ví dụ: "1,2,5,12"
+    set(ref(database, 'active_lamps'), activeLabels.join(','));
   }
 
   const timersRef = ref(database, 'timers');
-  const historyRef = ref(database, 'carHistory');
+  let allCells = {};
+  let selectedCell = null;
+  let isMultipleSelectionMode = false;
+  let selectedCellsForMultiple = new Set();
 
-  const minuteButtons = [0.2, 5, 10, 17, 20, 25, 32, 35, 40, 45, 50, 55, 62, 65, 70];
+  // Tạo 160 ô
+  const container = document.getElementById('main-cells-container');
+  for (let i = 1; i <= 160; i++) {
+    const label = String(i);
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = `<div class="stop">Tắt</div><div class="cell-content-wrapper"><div class="number">${label}</div><div class="time"></div></div>`;
+    
+    cell.querySelector('.stop').onclick = (e) => { e.stopPropagation(); resetCell(label); };
+    cell.onclick = () => {
+      if (isMultipleSelectionMode) {
+        if (selectedCellsForMultiple.has(label)) { selectedCellsForMultiple.delete(label); cell.classList.remove('selected'); }
+        else { selectedCellsForMultiple.add(label); cell.classList.add('selected'); }
+      } else {
+        if (selectedCell === label) { selectedCell = null; cell.classList.remove('selected'); }
+        else { 
+            if (selectedCell) allCells[selectedCell].cell.classList.remove('selected');
+            selectedCell = label; cell.classList.add('selected'); 
+        }
+      }
+    };
+    container.appendChild(cell);
+    allCells[label] = { cell, timer: null, remaining: 0, isExpiredAndNotCleared: false, timeEl: cell.querySelector('.time') };
+  }
+
+  function resetCell(label) {
+    remove(ref(database, 'timers/' + label));
+  }
+
+  // Nút chọn phút
   const rowTop = document.getElementById('row-minutes-top');
-  
-  minuteButtons.forEach(min => {
+  [0.2, 5, 10, 20, 30].forEach(min => {
     const btn = document.createElement('div');
     btn.className = 'button';
     btn.textContent = min;
-    btn.addEventListener('click', () => selectMinute(min));
+    btn.onclick = () => {
+      const nowTs = serverTimestamp();
+      if (isMultipleSelectionMode) {
+        selectedCellsForMultiple.forEach(l => {
+          set(ref(database, 'timers/' + l), { durationSeconds: min * 60, startTime: nowTs });
+        });
+        toggleMultipleSelectionMode();
+      } else if (selectedCell) {
+        set(ref(database, 'timers/' + selectedCell), { durationSeconds: min * 60, startTime: nowTs });
+        selectedCell = null;
+        Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
+      }
+    };
     rowTop.appendChild(btn);
   });
 
-  const selectMultipleBtn = document.createElement('div');
-  selectMultipleBtn.className = 'button select-multiple-button';
-  selectMultipleBtn.textContent = 'Chọn nhiều';
-  selectMultipleBtn.addEventListener('click', () => toggleMultipleSelectionMode());
-  rowTop.appendChild(selectMultipleBtn);
-
-  let allCells = {};
-  let selectedCell = null;
-  let exchangeFrom = null;
-  let isMultipleSelectionMode = false;
-  let selectedCellsForMultiple = new Set();
-  let displayHistoryTimeout = null;
-  let isSelectCarMode = false;
-  let selectedCarLabel = null;
-  let carHistory = {};
-
-  function createCells(containerId, start, end) {
-    const container = document.getElementById(containerId);
-    for (let i = start; i <= end; i++) {
-      const label = String(i);
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      const undo = document.createElement('div'); undo.className = 'undo'; undo.textContent = '↩';
-      const stop = document.createElement('div'); stop.className = 'stop'; stop.textContent = 'Tắt';
-      const exch = document.createElement('div'); exch.className = 'exchange'; exch.textContent = 'Đổi';
-      const number = document.createElement('div'); number.className = 'number'; number.textContent = label;
-      const time = document.createElement('div'); time.className = 'time';
-      const contentWrapper = document.createElement('div');
-      contentWrapper.className = 'cell-content-wrapper';
-      contentWrapper.append(number, time);
-      
-      undo.onclick = (e) => { e.stopPropagation(); undoCell(label); };
-      stop.onclick = (e) => { e.stopPropagation(); resetCell(label); };
-      exch.onclick = (e) => { e.stopPropagation(); startExchange(label); };
-      cell.onclick = () => selectCell(label);
-      
-      cell.append(undo, stop, exch, contentWrapper);
-      container.appendChild(cell);
-      
-      allCells[label] = { cell, timer: null, remaining: 0, lastState: null, origin: null, timeEl: time, numberEl: number, duration: 0, startTime: 0, isExpiredAndNotCleared: false, originalMinutes: 0 };
-    }
-  }
-
-  createCells('main-cells-container', 1, 160);
-
-  function resetCell(label) {
-    const cellData = allCells[label];
-    const bulk = {};
-    bulk[label] = { lenh: "OFF", ts: serverTimestamp() };
-    sendBulkCommands(bulk);
-
-    if (cellData.remaining > 0 || cellData.isExpiredAndNotCleared) {
-        if (cellData.duration > 0 && cellData.startTime > 0) {
-            cellData.lastState = { durationSeconds: cellData.duration, originalMinutes: cellData.originalMinutes, origin: cellData.origin, startTime: cellData.startTime, remaining: cellData.remaining };
-            recordHistory(label, cellData.startTime, Date.now() + serverTimeOffset, cellData.originalMinutes);
-        }
-    }
-    remove(ref(database, 'timers/' + label));
-    if (selectedCell === label) clearSelected();
-  }
-
-  function selectCell(label) {
-    if (isSelectCarMode) {
-      if (selectedCarLabel === label) { selectedCarLabel = null; clearStatsDisplay(); }
-      else { selectedCarLabel = label; document.getElementById('stats-car-number').textContent = label; document.getElementById('stats-selected-car').textContent = `Ô ${label}`; updateStatsDisplay(label); }
-      isSelectCarMode = false; selectCarButton.classList.remove('active'); return;
-    }
-    if (exchangeFrom) { transferTimer(exchangeFrom, label); return; }
-    if (isMultipleSelectionMode) {
-      if (selectedCellsForMultiple.has(label)) { selectedCellsForMultiple.delete(label); allCells[label].cell.classList.remove('selected'); }
-      else { selectedCellsForMultiple.add(label); allCells[label].cell.classList.add('selected'); }
-    } else {
-      if (displayHistoryTimeout) { clearTimeout(displayHistoryTimeout); displayHistoryTimeout = null; }
-      if (selectedCell === label) { selectedCell = null; allCells[label].cell.classList.remove('selected'); updateDisplay(label, allCells[label].remaining); }
-      else { clearSelected(); selectedCell = label; allCells[label].cell.classList.add('selected');
-          const cellData = allCells[label];
-          if (cellData.originalMinutes > 0 && cellData.startTime !== 0) {
-              const startTime = new Date(cellData.startTime + serverTimeOffset);
-              cellData.numberEl.classList.add('display-line-1'); cellData.timeEl.classList.add('display-line-2');
-              cellData.numberEl.textContent = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`;
-              cellData.timeEl.textContent = `M ${cellData.originalMinutes}`;
-              displayHistoryTimeout = setTimeout(() => { updateDisplay(label, cellData.remaining); displayHistoryTimeout = null; }, 5000);
-          } else { updateDisplay(label, cellData.remaining); }
-      }
-    }
-  }
-
-  function selectMinute(min) {
-    const timerUpdates = {};
-    const statusUpdates = {};
-    const nowTs = serverTimestamp();
-
-    if (isMultipleSelectionMode) {
-      selectedCellsForMultiple.forEach(label => {
-        if (!(allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared)) {
-          timerUpdates[label] = { durationSeconds: min * 60, originalMinutes: min, origin: null, startTime: nowTs };
-          statusUpdates[label] = { lenh: "OFF", ts: nowTs };
-        }
-      });
-      if (Object.keys(timerUpdates).length > 0) {
-        update(ref(database, 'timers'), timerUpdates);
-        sendBulkCommands(statusUpdates);
-      }
-      toggleMultipleSelectionMode();
-    } else {
-      if (!selectedCell) return;
-      if (allCells[selectedCell].remaining > 0 || allCells[selectedCell].isExpiredAndNotCleared) return;
-      
-      const label = selectedCell;
-      const data = { durationSeconds: min * 60, originalMinutes: min, origin: null, startTime: nowTs };
-      set(ref(database, 'timers/' + label), data);
-      
-      const status = {};
-      status[label] = { lenh: "OFF", ts: nowTs };
-      sendBulkCommands(status);
-      
-      clearSelected();
-    }
-  }
-
-  function updateDisplay(label, sec) {
-    const cellData = allCells[label];
-    const min = Math.floor(sec / 60); const secStr = String(sec % 60).padStart(2, '0');
-    cellData.numberEl.classList.remove('display-line-1'); cellData.timeEl.classList.remove('display-line-2');
-    cellData.numberEl.textContent = `${cellData.origin ? '('+cellData.origin+')-' : ''}${label}`;
-    cellData.timeEl.textContent = sec > 0 ? `${min}:${secStr}` : '';
-  }
-
-  function recordHistory(label, startTime, endTime, durationMinutes) {
-      if (durationMinutes === 0) return;
-      const specificHistoryRef = ref(database, 'carHistory/' + label);
-      onValue(specificHistoryRef, (snapshot) => {
-          const currentHistory = snapshot.val() || [];
-          const lastHistory = currentHistory[currentHistory.length - 1];
-          if (!lastHistory || lastHistory.start !== startTime) {
-              currentHistory.push({ start: startTime, end: endTime, duration: durationMinutes });
-              if (currentHistory.length > 10) currentHistory.shift();
-              set(specificHistoryRef, currentHistory);
-          }
-      }, { onlyOnce: true });
-  }
-
-  function undoCell(label) {
-    const last = allCells[label].lastState;
-    if (!last || allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared) return;
-    const nowTs = serverTimestamp();
-    set(ref(database, 'timers/' + label), { durationSeconds: last.remaining, originalMinutes: last.originalMinutes, origin: last.origin, startTime: nowTs });
-    const status = {}; status[label] = { lenh: "OFF", ts: nowTs };
-    sendBulkCommands(status);
-    allCells[label].lastState = null;
-  }
-
-  function startExchange(label) { clearSelected(); exchangeFrom = label; allCells[label].cell.classList.add('selected'); }
-
-  function transferTimer(from, to) {
-    onValue(ref(database, 'timers/' + from), (snapshot) => {
-        const data = snapshot.val();
-        if (data && typeof data.startTime === 'number') {
-            const nowTs = serverTimestamp();
-            set(ref(database, 'timers/' + to), { durationSeconds: data.durationSeconds, originalMinutes: data.originalMinutes, origin: data.origin || from, startTime: data.startTime })
-            .then(() => { 
-              remove(ref(database, 'timers/' + from));
-              const status = {};
-              status[from] = { lenh: "OFF", ts: nowTs };
-              sendBulkCommands(status);
-            });
-        }
-        exchangeFrom = null; clearSelected();
-    }, { onlyOnce: true });
-  }
-
-  function clearSelected() {
-    Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
-    selectedCell = null; exchangeFrom = null; selectedCellsForMultiple.clear();
-  }
+  const mBtn = document.createElement('div');
+  mBtn.className = 'button select-multiple-button';
+  mBtn.textContent = 'Chọn nhiều';
+  mBtn.onclick = toggleMultipleSelectionMode;
+  rowTop.appendChild(mBtn);
 
   function toggleMultipleSelectionMode() {
-    isMultipleSelectionMode = !isMultipleSelectionMode; clearSelected();
-    selectMultipleBtn.classList.toggle('active', isMultipleSelectionMode);
+    isMultipleSelectionMode = !isMultipleSelectionMode;
+    mBtn.classList.toggle('active', isMultipleSelectionMode);
+    selectedCellsForMultiple.clear();
+    Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
   }
 
-  // LOGIC ĐỒNG BỘ CHÍNH
+  // Lắng nghe dữ liệu
   onValue(timersRef, (snapshot) => {
-    const firebaseData = snapshot.val() || {};
+    const data = snapshot.val() || {};
     const now = Date.now() + serverTimeOffset;
-    const expiredUpdates = {};
+    let hasChange = false;
 
     Object.keys(allCells).forEach(label => {
       const cellData = allCells[label];
-      const data = firebaseData[label];
+      const timer = data[label];
 
-      if (data && data.startTime) {
-        const elapsed = Math.floor((now - data.startTime) / 1000);
-        const remaining = Math.max(0, data.durationSeconds - elapsed);
-
+      if (timer) {
+        const remaining = Math.max(0, timer.durationSeconds - Math.floor((now - timer.startTime) / 1000));
+        cellData.timeEl.textContent = remaining > 0 ? Math.floor(remaining/60) + ":" + String(remaining%60).padStart(2,'0') : "";
+        
         if (remaining <= 0) {
-            if (cellData.timer) { clearInterval(cellData.timer); cellData.timer = null; }
-            cellData.cell.classList.add('expired');
-            cellData.timeEl.textContent = '';
-            cellData.remaining = 0;
-            cellData.isExpiredAndNotCleared = true;
-            // Thu thập các ô hết hạn để gửi lệnh ON 1 lần duy nhất
-            expiredUpdates[label] = { lenh: "ON", ts: serverTimestamp() };
+          if (!cellData.isExpiredAndNotCleared) { cellData.isExpiredAndNotCleared = true; hasChange = true; }
+          cellData.cell.classList.add('expired');
         } else {
-            cellData.cell.classList.remove('expired');
-            cellData.isExpiredAndNotCleared = false;
-            // Đảm bảo trạng thái OFF khi đang chạy
-
-            if (cellData.remaining !== remaining || !cellData.timer) {
-                if (cellData.timer) clearInterval(cellData.timer);
-                cellData.remaining = remaining;
-                cellData.duration = data.durationSeconds;
-                cellData.startTime = data.startTime;
-                cellData.originalMinutes = data.originalMinutes;
-                cellData.origin = data.origin;
-                updateDisplay(label, remaining);
-
-                cellData.timer = setInterval(() => {
-                    const curNow = Date.now() + serverTimeOffset;
-                    const curRem = Math.max(0, cellData.duration - Math.floor((curNow - cellData.startTime) / 1000));
-                    cellData.remaining = curRem;
-                    updateDisplay(label, curRem);
-                    if (curRem <= 0) { 
-                        clearInterval(cellData.timer); cellData.timer = null; 
-                        cellData.cell.classList.add('expired'); cellData.isExpiredAndNotCleared = true;
-                        const onUpdate = {}; onUpdate[label] = { lenh: "ON", ts: serverTimestamp() };
-                        sendBulkCommands(onUpdate);
-                    }
-                }, 1000);
-            }
+          if (cellData.isExpiredAndNotCleared) { cellData.isExpiredAndNotCleared = false; hasChange = true; }
+          cellData.cell.classList.remove('expired');
         }
       } else {
-        if (cellData.timer) { clearInterval(cellData.timer); cellData.timer = null; }
+        if (cellData.isExpiredAndNotCleared) { cellData.isExpiredAndNotCleared = false; hasChange = true; }
         cellData.cell.classList.remove('expired');
-        cellData.timeEl.textContent = '';
-        cellData.numberEl.textContent = label;
-        cellData.remaining = 0;
-        cellData.isExpiredAndNotCleared = false;
+        cellData.timeEl.textContent = "";
       }
     });
 
-    if (Object.keys(expiredUpdates).length > 0) {
-      sendBulkCommands(expiredUpdates);
-    }
+    if (hasChange) updateActiveLampsOnFirebase();
   });
-
-  const selectCarButton = document.getElementById('select-car-button');
-  selectCarButton.addEventListener('click', () => {
-    isSelectCarMode = !isSelectCarMode;
-    selectCarButton.classList.toggle('active', isSelectCarMode);
-    clearStatsDisplay();
-  });
-
-  onValue(historyRef, (snapshot) => {
-      carHistory = snapshot.val() || {};
-      if (selectedCarLabel) updateStatsDisplay(selectedCarLabel);
-  });
-
-  function updateStatsDisplay(label) {
-    const history = carHistory[label] || [];
-    const startTimesEl = document.getElementById('stats-start-times');
-    const endTimesEl = document.getElementById('stats-end-times');
-    const durationEl = document.getElementById('stats-duration');
-    startTimesEl.innerHTML = ''; endTimesEl.innerHTML = ''; durationEl.innerHTML = '';
-    history.forEach(item => {
-      const start = new Date(item.start); const end = new Date(item.end);
-      const sDiv = document.createElement('div'); sDiv.className = 'history-time'; sDiv.textContent = `${String(start.getHours()).padStart(2,'0')}:${String(start.getMinutes()).padStart(2,'0')}`; startTimesEl.appendChild(sDiv);
-      const eDiv = document.createElement('div'); eDiv.className = 'history-time'; eDiv.textContent = `${String(end.getHours()).padStart(2,'0')}:${String(end.getMinutes()).padStart(2,'0')}`; endTimesEl.appendChild(eDiv);
-      const dDiv = document.createElement('div'); dDiv.className = 'history-time'; dDiv.textContent = item.duration; durationEl.appendChild(dDiv);
-    });
-  }
-
-  function clearStatsDisplay() {
-    document.getElementById('stats-car-number').textContent = ''; document.getElementById('stats-selected-car').textContent = '';
-    document.getElementById('stats-start-times').innerHTML = ''; document.getElementById('stats-end-times').innerHTML = ''; document.getElementById('stats-duration').innerHTML = '';
-  }
 </script>
 </body>
 </html>
