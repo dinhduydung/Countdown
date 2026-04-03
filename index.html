@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ứng dụng đếm ngược - Fix Triệt Để Hardware</title>
+<title>Hệ thống điều khiển 160 LED - Fix Triệt Để</title>
 <style>
-  /* Giữ nguyên phần CSS cũ của bạn */
+  /* Giữ nguyên CSS cũ để bạn dễ sử dụng */
   body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
   .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
   .container-cells { display: flex; flex-wrap: wrap; justify-content: flex-start; }
@@ -17,11 +17,7 @@
   .selected { background-color: #FF69B4 !important; }
   .expired { animation: blink 1s infinite; background-color: red !important; color: white; }
   @keyframes blink { 50% { opacity: 0.4; } }
-  .undo, .stop, .exchange { position: absolute; font-size: 10px; cursor: pointer; }
-  .undo { top: 2px; left: 3px; color: blue; }
-  .stop { bottom: 2px; left: 3px; color: red; }
-  .exchange { bottom: 2px; right: 3px; color: green; }
-  .cell-content-wrapper { text-align: center; }
+  .stop { position: absolute; bottom: 2px; left: 3px; font-size: 10px; color: red; cursor: pointer; }
   .time { font-size: 14px; font-weight: bold; margin-top: 2px; }
 </style>
 </head>
@@ -47,16 +43,14 @@
   let serverTimeOffset = 0;
   onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
 
-  // HÀM QUAN TRỌNG: Cập nhật danh sách các ô đang cháy đèn
-  function updateActiveLampsOnFirebase() {
-    const activeLabels = [];
-    Object.keys(allCells).forEach(label => {
-      if (allCells[label].isExpiredAndNotCleared) {
-        activeLabels.push(label);
-      }
-    });
-    // Gửi một chuỗi duy nhất, ví dụ: "1,2,5,12"
-    set(ref(database, 'active_lamps'), activeLabels.join(','));
+  // HÀM GỬI CHUỖI TRẠNG THÁI 160 KÝ TỰ
+  function updateLampsOnFirebase() {
+    let mask = "";
+    for (let i = 1; i <= 160; i++) {
+      mask += allCells[String(i)].isExpiredAndNotCleared ? "1" : "0";
+    }
+    // Gửi chuỗi ví dụ: "0001001..." lên node 'led_mask'
+    set(ref(database, 'led_mask'), mask);
   }
 
   const timersRef = ref(database, 'timers');
@@ -65,60 +59,46 @@
   let isMultipleSelectionMode = false;
   let selectedCellsForMultiple = new Set();
 
-  // Tạo 160 ô
   const container = document.getElementById('main-cells-container');
   for (let i = 1; i <= 160; i++) {
     const label = String(i);
     const cell = document.createElement('div');
     cell.className = 'cell';
-    cell.innerHTML = `<div class="stop">Tắt</div><div class="cell-content-wrapper"><div class="number">${label}</div><div class="time"></div></div>`;
+    cell.innerHTML = `<div class="stop">Tắt</div><div class="number">${label}</div><div class="time" id="time-${label}"></div>`;
     
-    cell.querySelector('.stop').onclick = (e) => { e.stopPropagation(); resetCell(label); };
+    cell.querySelector('.stop').onclick = (e) => { e.stopPropagation(); remove(ref(database, 'timers/' + label)); };
     cell.onclick = () => {
       if (isMultipleSelectionMode) {
         if (selectedCellsForMultiple.has(label)) { selectedCellsForMultiple.delete(label); cell.classList.remove('selected'); }
         else { selectedCellsForMultiple.add(label); cell.classList.add('selected'); }
       } else {
-        if (selectedCell === label) { selectedCell = null; cell.classList.remove('selected'); }
-        else { 
-            if (selectedCell) allCells[selectedCell].cell.classList.remove('selected');
-            selectedCell = label; cell.classList.add('selected'); 
-        }
+        if (selectedCell) allCells[selectedCell].cell.classList.remove('selected');
+        selectedCell = label; cell.classList.add('selected'); 
       }
     };
     container.appendChild(cell);
-    allCells[label] = { cell, timer: null, remaining: 0, isExpiredAndNotCleared: false, timeEl: cell.querySelector('.time') };
+    allCells[label] = { cell, isExpiredAndNotCleared: false, timeEl: cell.querySelector('.time') };
   }
 
-  function resetCell(label) {
-    remove(ref(database, 'timers/' + label));
-  }
-
-  // Nút chọn phút
   const rowTop = document.getElementById('row-minutes-top');
-  [0.2, 5, 10, 20, 30].forEach(min => {
+  [0.2, 5, 10, 20, 30, 45, 60].forEach(min => {
     const btn = document.createElement('div');
-    btn.className = 'button';
-    btn.textContent = min;
+    btn.className = 'button'; btn.textContent = min;
     btn.onclick = () => {
       const nowTs = serverTimestamp();
       if (isMultipleSelectionMode) {
-        selectedCellsForMultiple.forEach(l => {
-          set(ref(database, 'timers/' + l), { durationSeconds: min * 60, startTime: nowTs });
-        });
+        selectedCellsForMultiple.forEach(l => set(ref(database, 'timers/' + l), { durationSeconds: min * 60, startTime: nowTs }));
         toggleMultipleSelectionMode();
       } else if (selectedCell) {
         set(ref(database, 'timers/' + selectedCell), { durationSeconds: min * 60, startTime: nowTs });
-        selectedCell = null;
-        Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
+        selectedCell = null; Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
       }
     };
     rowTop.appendChild(btn);
   });
 
   const mBtn = document.createElement('div');
-  mBtn.className = 'button select-multiple-button';
-  mBtn.textContent = 'Chọn nhiều';
+  mBtn.className = 'button select-multiple-button'; mBtn.textContent = 'Chọn nhiều';
   mBtn.onclick = toggleMultipleSelectionMode;
   rowTop.appendChild(mBtn);
 
@@ -129,35 +109,28 @@
     Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
   }
 
-  // Lắng nghe dữ liệu
   onValue(timersRef, (snapshot) => {
     const data = snapshot.val() || {};
     const now = Date.now() + serverTimeOffset;
-    let hasChange = false;
+    let changed = false;
 
-    Object.keys(allCells).forEach(label => {
+    for (let i = 1; i <= 160; i++) {
+      const label = String(i);
       const cellData = allCells[label];
       const timer = data[label];
 
       if (timer) {
         const remaining = Math.max(0, timer.durationSeconds - Math.floor((now - timer.startTime) / 1000));
         cellData.timeEl.textContent = remaining > 0 ? Math.floor(remaining/60) + ":" + String(remaining%60).padStart(2,'0') : "";
-        
-        if (remaining <= 0) {
-          if (!cellData.isExpiredAndNotCleared) { cellData.isExpiredAndNotCleared = true; hasChange = true; }
-          cellData.cell.classList.add('expired');
-        } else {
-          if (cellData.isExpiredAndNotCleared) { cellData.isExpiredAndNotCleared = false; hasChange = true; }
-          cellData.cell.classList.remove('expired');
-        }
+        const isExpired = (remaining <= 0);
+        if (cellData.isExpiredAndNotCleared !== isExpired) { cellData.isExpiredAndNotCleared = isExpired; changed = true; }
+        if (isExpired) cellData.cell.classList.add('expired'); else cellData.cell.classList.remove('expired');
       } else {
-        if (cellData.isExpiredAndNotCleared) { cellData.isExpiredAndNotCleared = false; hasChange = true; }
-        cellData.cell.classList.remove('expired');
-        cellData.timeEl.textContent = "";
+        if (cellData.isExpiredAndNotCleared) { cellData.isExpiredAndNotCleared = false; changed = true; }
+        cellData.cell.classList.remove('expired'); cellData.timeEl.textContent = "";
       }
-    });
-
-    if (hasChange) updateActiveLampsOnFirebase();
+    }
+    if (changed) updateLampsOnFirebase();
   });
 </script>
 </body>
