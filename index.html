@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ứng dụng đếm ngược Offline - Fix Chọn Nhiều</title>
+<title>Ứng dụng đếm ngược Offline - Fix Đồng Bộ Hàng Loạt</title>
 <style>
   body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
   .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
@@ -85,35 +85,14 @@
   const app = initializeApp(firebaseConfig);
   const database = getDatabase(app);
   
-  let currentLampStatus = {}; 
   let serverTimeOffset = 0;
   onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
 
-  // Cơ chế Hàng đợi gửi lệnh để tránh nghẽn khi chọn nhiều
-  let commandQueue = [];
-  let isProcessingQueue = false;
-
-  async function processQueue() {
-    if (isProcessingQueue || commandQueue.length === 0) return;
-    isProcessingQueue = true;
-    while (commandQueue.length > 0) {
-      const { label, action } = commandQueue.shift();
-      if (currentLampStatus[label] !== action) {
-        await set(ref(database, 'esp_status/' + label), {
-          lenh: action,
-          ts: serverTimestamp()
-        });
-        currentLampStatus[label] = action;
-        // Nghỉ 150ms giữa mỗi lệnh để Firebase và ESP32 kịp nhận
-        await new Promise(resolve => setTimeout(resolve, 150));
-      }
-    }
-    isProcessingQueue = false;
-  }
-
-  function sendCommand(label, action) {
-    commandQueue.push({ label, action });
-    processQueue();
+  // HÀM GỬI LỆNH TỔNG HỢP (BULK UPDATE)
+  function sendBulkCommands(updates) {
+    if (Object.keys(updates).length === 0) return;
+    const statusRef = ref(database, 'esp_status');
+    update(statusRef, updates);
   }
 
   const timersRef = ref(database, 'timers');
@@ -177,7 +156,10 @@
 
   function resetCell(label) {
     const cellData = allCells[label];
-    sendCommand(label, "OFF");
+    const bulk = {};
+    bulk[label] = { lenh: "OFF", ts: serverTimestamp() };
+    sendBulkCommands(bulk);
+
     if (cellData.remaining > 0 || cellData.isExpiredAndNotCleared) {
         if (cellData.duration > 0 && cellData.startTime > 0) {
             cellData.lastState = { durationSeconds: cellData.duration, originalMinutes: cellData.originalMinutes, origin: cellData.origin, startTime: cellData.startTime, remaining: cellData.remaining };
@@ -186,16 +168,6 @@
     }
     remove(ref(database, 'timers/' + label));
     if (selectedCell === label) clearSelected();
-  }
-
-  function startTimer(label, durationSeconds, originalMinutes, origin=null) {
-    sendCommand(label, "OFF");
-    set(ref(database, 'timers/' + label), { 
-        durationSeconds: Math.floor(durationSeconds), 
-        originalMinutes: originalMinutes, 
-        origin: origin, 
-        startTime: serverTimestamp() 
-    });
   }
 
   function selectCell(label) {
@@ -225,16 +197,34 @@
   }
 
   function selectMinute(min) {
+    const timerUpdates = {};
+    const statusUpdates = {};
+    const nowTs = serverTimestamp();
+
     if (isMultipleSelectionMode) {
-      const labels = Array.from(selectedCellsForMultiple);
-      labels.forEach(label => {
-        if (!(allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared)) startTimer(label, min * 60, min, null);
+      selectedCellsForMultiple.forEach(label => {
+        if (!(allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared)) {
+          timerUpdates[label] = { durationSeconds: min * 60, originalMinutes: min, origin: null, startTime: nowTs };
+          statusUpdates[label] = { lenh: "OFF", ts: nowTs };
+        }
       });
+      if (Object.keys(timerUpdates).length > 0) {
+        update(ref(database, 'timers'), timerUpdates);
+        sendBulkCommands(statusUpdates);
+      }
       toggleMultipleSelectionMode();
     } else {
       if (!selectedCell) return;
       if (allCells[selectedCell].remaining > 0 || allCells[selectedCell].isExpiredAndNotCleared) return;
-      startTimer(selectedCell, min * 60, min, null);
+      
+      const label = selectedCell;
+      const data = { durationSeconds: min * 60, originalMinutes: min, origin: null, startTime: nowTs };
+      set(ref(database, 'timers/' + label), data);
+      
+      const status = {};
+      status[label] = { lenh: "OFF", ts: nowTs };
+      sendBulkCommands(status);
+      
       clearSelected();
     }
   }
@@ -264,7 +254,10 @@
   function undoCell(label) {
     const last = allCells[label].lastState;
     if (!last || allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared) return;
-    startTimer(label, last.remaining, last.originalMinutes, last.origin);
+    const nowTs = serverTimestamp();
+    set(ref(database, 'timers/' + label), { durationSeconds: last.remaining, originalMinutes: last.originalMinutes, origin: last.origin, startTime: nowTs });
+    const status = {}; status[label] = { lenh: "OFF", ts: nowTs };
+    sendBulkCommands(status);
     allCells[label].lastState = null;
   }
 
@@ -274,8 +267,14 @@
     onValue(ref(database, 'timers/' + from), (snapshot) => {
         const data = snapshot.val();
         if (data && typeof data.startTime === 'number') {
+            const nowTs = serverTimestamp();
             set(ref(database, 'timers/' + to), { durationSeconds: data.durationSeconds, originalMinutes: data.originalMinutes, origin: data.origin || from, startTime: data.startTime })
-            .then(() => { remove(ref(database, 'timers/' + from)); sendCommand(from, "OFF"); });
+            .then(() => { 
+              remove(ref(database, 'timers/' + from));
+              const status = {};
+              status[from] = { lenh: "OFF", ts: nowTs };
+              sendBulkCommands(status);
+            });
         }
         exchangeFrom = null; clearSelected();
     }, { onlyOnce: true });
@@ -291,9 +290,11 @@
     selectMultipleBtn.classList.toggle('active', isMultipleSelectionMode);
   }
 
+  // LOGIC ĐỒNG BỘ CHÍNH
   onValue(timersRef, (snapshot) => {
     const firebaseData = snapshot.val() || {};
     const now = Date.now() + serverTimeOffset;
+    const expiredUpdates = {};
 
     Object.keys(allCells).forEach(label => {
       const cellData = allCells[label];
@@ -309,11 +310,12 @@
             cellData.timeEl.textContent = '';
             cellData.remaining = 0;
             cellData.isExpiredAndNotCleared = true;
-            sendCommand(label, "ON");
+            // Thu thập các ô hết hạn để gửi lệnh ON 1 lần duy nhất
+            expiredUpdates[label] = { lenh: "ON", ts: serverTimestamp() };
         } else {
             cellData.cell.classList.remove('expired');
             cellData.isExpiredAndNotCleared = false;
-            sendCommand(label, "OFF");
+            // Đảm bảo trạng thái OFF khi đang chạy
 
             if (cellData.remaining !== remaining || !cellData.timer) {
                 if (cellData.timer) clearInterval(cellData.timer);
@@ -332,7 +334,8 @@
                     if (curRem <= 0) { 
                         clearInterval(cellData.timer); cellData.timer = null; 
                         cellData.cell.classList.add('expired'); cellData.isExpiredAndNotCleared = true;
-                        sendCommand(label, "ON");
+                        const onUpdate = {}; onUpdate[label] = { lenh: "ON", ts: serverTimestamp() };
+                        sendBulkCommands(onUpdate);
                     }
                 }, 1000);
             }
@@ -344,9 +347,12 @@
         cellData.numberEl.textContent = label;
         cellData.remaining = 0;
         cellData.isExpiredAndNotCleared = false;
-        sendCommand(label, "OFF");
       }
     });
+
+    if (Object.keys(expiredUpdates).length > 0) {
+      sendBulkCommands(expiredUpdates);
+    }
   });
 
   const selectCarButton = document.getElementById('select-car-button');
