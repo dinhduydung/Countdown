@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ứng dụng đếm ngược Offline - Fix Triệt Để</title>
+<title>Ứng dụng đếm ngược Offline - Fix Chọn Nhiều</title>
 <style>
   body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
   .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
@@ -89,13 +89,31 @@
   let serverTimeOffset = 0;
   onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
 
+  // Cơ chế Hàng đợi gửi lệnh để tránh nghẽn khi chọn nhiều
+  let commandQueue = [];
+  let isProcessingQueue = false;
+
+  async function processQueue() {
+    if (isProcessingQueue || commandQueue.length === 0) return;
+    isProcessingQueue = true;
+    while (commandQueue.length > 0) {
+      const { label, action } = commandQueue.shift();
+      if (currentLampStatus[label] !== action) {
+        await set(ref(database, 'esp_status/' + label), {
+          lenh: action,
+          ts: serverTimestamp()
+        });
+        currentLampStatus[label] = action;
+        // Nghỉ 150ms giữa mỗi lệnh để Firebase và ESP32 kịp nhận
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+    }
+    isProcessingQueue = false;
+  }
+
   function sendCommand(label, action) {
-    if (currentLampStatus[label] === action) return;
-    set(ref(database, 'esp_status/' + label), {
-      lenh: action,
-      ts: serverTimestamp()
-    });
-    currentLampStatus[label] = action;
+    commandQueue.push({ label, action });
+    processQueue();
   }
 
   const timersRef = ref(database, 'timers');
@@ -171,7 +189,7 @@
   }
 
   function startTimer(label, durationSeconds, originalMinutes, origin=null) {
-    sendCommand(label, "OFF"); // Tắt ngay khi bấm số phút
+    sendCommand(label, "OFF");
     set(ref(database, 'timers/' + label), { 
         durationSeconds: Math.floor(durationSeconds), 
         originalMinutes: originalMinutes, 
@@ -208,7 +226,8 @@
 
   function selectMinute(min) {
     if (isMultipleSelectionMode) {
-      selectedCellsForMultiple.forEach(label => {
+      const labels = Array.from(selectedCellsForMultiple);
+      labels.forEach(label => {
         if (!(allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared)) startTimer(label, min * 60, min, null);
       });
       toggleMultipleSelectionMode();
@@ -272,7 +291,6 @@
     selectMultipleBtn.classList.toggle('active', isMultipleSelectionMode);
   }
 
-  // LOGIC ĐỒNG BỘ CHÍNH
   onValue(timersRef, (snapshot) => {
     const firebaseData = snapshot.val() || {};
     const now = Date.now() + serverTimeOffset;
@@ -286,7 +304,6 @@
         const remaining = Math.max(0, data.durationSeconds - elapsed);
 
         if (remaining <= 0) {
-            // Chỉ ON khi thực sự hết thời gian và timer đang tồn tại
             if (cellData.timer) { clearInterval(cellData.timer); cellData.timer = null; }
             cellData.cell.classList.add('expired');
             cellData.timeEl.textContent = '';
@@ -296,7 +313,7 @@
         } else {
             cellData.cell.classList.remove('expired');
             cellData.isExpiredAndNotCleared = false;
-            sendCommand(label, "OFF"); // Đảm bảo luôn OFF khi còn thời gian
+            sendCommand(label, "OFF");
 
             if (cellData.remaining !== remaining || !cellData.timer) {
                 if (cellData.timer) clearInterval(cellData.timer);
