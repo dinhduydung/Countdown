@@ -3,53 +3,164 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ứng dụng đếm ngược Offline - Fix Triệt Để</title>
+<title>Ứng dụng đếm ngược Offline</title>
 <style>
   body { font-family: Arial, sans-serif; background: #fff; margin: 5px; }
-  .row { display: flex; flex-wrap: wrap; margin-bottom: 5px; }
-  .container-cells { display: flex; flex-wrap: wrap; justify-content: flex-start; }
-  
+  .row { 
+  display: flex; 
+  flex-wrap: wrap; 
+  margin-bottom: 5px; 
+  justify-content: flex-start; /* Ô sẽ xếp từ trái sang phải */
+}
   .button, .cell {
     display: flex; justify-content: center; align-items: center;
     border: 1px solid #ccc; margin: 2px;
     width: 60px; height: 60px;
     overflow: hidden;
     font-size: 12px; font-weight: bold; position: relative;
-    border-radius: 8px; user-select: none;
+    border-radius: 8-px; user-select: none;
   }
   .button { background-color: #4CAF50; color: white; }
-  .select-multiple-button { background-color: lightgreen; color: #000; margin-left: 20px; min-width: 80px; font-size: 11px; }
-  .select-multiple-button.active { background-color: lightpink; }
-  .cell { background-color: #fff; color: #000; }
+  /* CSS cho nút "Chọn nhiều" */
+  .select-multiple-button {
+    background-color: lightgreen;
+    color: #000;
+    margin-left: 20px;
+    min-width: 80px;
+    font-size: 11px;
+  }
+  /* Màu nền hồng nhạt khi nút "Chọn nhiều" được kích hoạt */
+  .select-multiple-button.active {
+    background-color: lightpink;
+  }
+
+  .cell {
+    background-color: #fff;
+    color: #000;
+  }
+
   .selected { background-color: #FF69B4 !important; color: #000; }
   .expired { animation: blink 1s infinite; background-color: red !important; color: white; }
   @keyframes blink { 50% { opacity: 0.4; } }
+
   .undo { position: absolute; top: 2px; left: 3px; font-size: 10px; color: blue; cursor: pointer; }
   .stop { position: absolute; bottom: 2px; left: 3px; font-size: 10px; color: red; cursor: pointer; }
   .exchange { position: absolute; bottom: 2px; right: 3px; font-size: 10px; color: green; cursor: pointer; }
-  .cell-content-wrapper { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; height: 100%; text-align: center; box-sizing: border-box; padding: 2px; }
-  .number { font-size: 12px; line-height: 1.2; white-space: nowrap; color: #000; }
-  .time { font-size: 14px; font-weight: bold; line-height: 1.2; white-space: nowrap; color: #000; margin-top: 2px; }
-  .display-line-1 { font-size: 12px; line-height: 1.2; white-space: nowrap; }
-  .display-line-2 { font-size: 14px; font-weight: bold; line-height: 1.2; white-space: nowrap; }
-  .stats-table { margin-top: 20px; border-collapse: collapse; width: 100%; display: flex; flex-direction: column; }
-  .stats-header, .stats-row { display: flex; border: 1px solid #ccc; font-size: 14px; font-weight: bold; }
-  .stats-header-cell, .stats-cell { padding: 8px; border: 1px solid #ccc; flex: 1; text-align: center; }
-  .stats-header-cell.col-car-number, .stats-cell.col-car-number { flex: 0.5; }
-  .stats-header-cell.col-select-car, .stats-cell.col-select-car { flex: 1; }
-  .stats-header-cell.col-start-time, .stats-cell.col-start-time, .stats-header-cell.col-end-time, .stats-cell.col-end-time { flex: 1.2; }
-  .stats-header-cell.col-duration, .stats-cell.col-duration { flex: 0.8; }
-  .stats-header-cell { background-color: #f2f2f2; font-weight: bold; }
-  .stats-cell-flex-col { display: flex; flex-direction: column; justify-content: center; align-items: center; }
-  .select-car-button { background-color: #f2f2f2; cursor: pointer; }
-  .select-car-button.active { background-color: lightpink; }
-  .history-time { font-size: 10px; margin: 1px 0; }
+
+  /* Cập nhật CSS cho số ô và thời gian để chúng hiển thị hai dòng */
+  .cell-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    box-sizing: border-box;
+    padding: 2px;
+  }
+
+  /* Số ô mặc định hoặc giờ vào (dòng trên) */
+  .number {
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: nowrap;
+    color: #000;
+  }
+
+  /* Thời gian đếm ngược hoặc số phút đã chọn (dòng dưới) */
+  .time {
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1.2;
+    white-space: nowrap;
+    color: #000;
+    margin-top: 2px;
+  }
+
+  /* CSS đặc biệt khi hiển thị lịch sử (giữ nguyên kích thước font và line-height để không bị nháy) */
+  .display-line-1 {
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+  }
+
+  .display-line-2 {
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1.2;
+      white-space: nowrap;
+  }
+
+  /* CSS cho bảng thống kê */
+  .stats-table {
+    margin-top: 20px;
+    border-collapse: collapse;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .stats-header, .stats-row {
+    display: flex;
+    border: 1px solid #ccc;
+    font-size: 14px;
+    font-weight: bold;
+  }
+  .stats-header-cell, .stats-cell {
+    padding: 8px;
+    border: 1px solid #ccc;
+    flex: 1;
+    text-align: center;
+  }
+  /* Điều chỉnh lại kích thước các cột trong bảng thống kê */
+  .stats-header-cell.col-car-number, .stats-cell.col-car-number {
+    flex: 0.5;
+  }
+  .stats-header-cell.col-select-car, .stats-cell.col-select-car {
+    flex: 1;
+  }
+  .stats-header-cell.col-start-time, .stats-cell.col-start-time,
+  .stats-header-cell.col-end-time, .stats-cell.col-end-time {
+    flex: 1.2;
+  }
+  .stats-header-cell.col-duration, .stats-cell.col-duration {
+    flex: 0.8;
+  }
+
+  .stats-header-cell {
+    background-color: #f2f2f2;
+    font-weight: bold;
+  }
+
+  .stats-cell-flex-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .select-car-button {
+    background-color: #f2f2f2;
+    cursor: pointer;
+  }
+  .select-car-button.active {
+    background-color: lightpink;
+  }
+
+  .history-time {
+    font-size: 10px;
+    margin: 1px 0;
+  }
 </style>
 </head>
 <body>
 
-<div class="row" id="row-minutes-top"></div>
-<div class="container-cells" id="main-cells-container"></div>
+<div class="row" id="row1"></div>
+<div class="row" id="row2"></div>
+<div class="row" id="row3"></div>
+<div class="row" id="row4"></div>
+<div class="row" id="row5"></div>
+<div class="row" id="row6"></div>
 
 <div class="stats-table">
   <div class="stats-header">
@@ -68,55 +179,64 @@
   </div>
 </div>
 
+
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-  import { getDatabase, ref, set, onValue, remove, serverTimestamp, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+  // Import necessary functions from Firebase SDK v9
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+import { getDatabase, ref, set, onValue, remove, update, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-  const firebaseConfig = { 
-    apiKey: "AIzaSyBIqFzPL-tob4Lu1Xjg5tjCJeknYhiZmV0", 
-    authDomain: "countdown1-45507.firebaseapp.com", 
-    databaseURL: "https://countdown1-45507-default-rtdb.asia-southeast1.firebasedatabase.app", 
-    projectId: "countdown1-45507", 
-    storageBucket: "countdown1-45507.firebasestorage.app", 
-    messagingSenderId: "565185644071", 
-    appId: "1:565185644071:web:dc90993788fc847248f002", 
-  };
+// Cấu hình mới cho dự án A3-2 của bạn
+const firebaseConfig = {
+  apiKey: "AIzaSyB_B9gTHBtEsbUgSEw9UP7ob0_KdYKFc0Y",
+  authDomain: "a3-2-d0c18.firebaseapp.com",
+  // Dán đường link bạn vừa copy vào đây
+  databaseURL: "https://a3-2-d0c18-default-rtdb.asia-southeast1.firebasedatabase.app", 
+  projectId: "a3-2-d0c18",
+  storageBucket: "a3-2-d0c18.firebasestorage.app",
+  messagingSenderId: "229427429715",
+  appId: "1:229427429715:web:8cce60f9003fcc3c78e1a6",
+  measurementId: "G-KHHKLDKB68"
+};
 
-  const app = initializeApp(firebaseConfig);
-  const database = getDatabase(app);
-  
-  let currentLampStatus = {}; 
-  let serverTimeOffset = 0;
-  onValue(ref(database, '.info/serverTimeOffset'), snap => serverTimeOffset = snap.val());
-
-  function sendCommand(label, action) {
-    if (currentLampStatus[label] === action) return;
-    set(ref(database, 'esp_status/' + label), {
-      lenh: action,
-      ts: serverTimestamp()
-    });
-    currentLampStatus[label] = action;
-  }
-
-  const timersRef = ref(database, 'timers');
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const database = getDatabase(app);
+const timersRef = ref(database, 'timers');
+  // Tham chiếu đến bảng lịch sử trên Firebase
   const historyRef = ref(database, 'carHistory');
 
-  const minuteButtons = [0.2, 5, 10, 17, 20, 25, 32, 35, 40, 45, 50, 55, 62, 65, 70];
-  const rowTop = document.getElementById('row-minutes-top');
-  
-  minuteButtons.forEach(min => {
-    const btn = document.createElement('div');
-    btn.className = 'button';
-    btn.textContent = min;
-    btn.addEventListener('click', () => selectMinute(min));
-    rowTop.appendChild(btn);
-  });
+  const minuteRows = [
+    { id: 'row1', minutes: [5,10,20,25,35,40,45,50,55,65,70] },
+    { id: 'row2', minutes: [17,32,62] },
+    { id: 'row5', minutes: [17,32,62] },
+    { id: 'row6', minutes: [5,10,20,25,35,40,45,50,55,65,70] },
+  ];
 
-  const selectMultipleBtn = document.createElement('div');
-  selectMultipleBtn.className = 'button select-multiple-button';
-  selectMultipleBtn.textContent = 'Chọn nhiều';
-  selectMultipleBtn.addEventListener('click', () => toggleMultipleSelectionMode());
-  rowTop.appendChild(selectMultipleBtn);
+  let selectMultipleButtonInstanceTop = null;
+  let selectMultipleButtonInstanceBottom = null;
+
+  minuteRows.forEach(row => {
+    row.minutes.forEach(min => {
+      const btn = document.createElement('div');
+      btn.className = 'button';
+      btn.textContent = min;
+      btn.addEventListener('click', () => selectMinute(min));
+      document.getElementById(row.id).appendChild(btn);
+    });
+    if (row.id === 'row2' || row.id === 'row5') {
+        const selectMultipleBtn = document.createElement('div');
+        selectMultipleBtn.className = 'button select-multiple-button';
+        selectMultipleBtn.textContent = 'Chọn nhiều';
+        selectMultipleBtn.addEventListener('click', () => toggleMultipleSelectionMode());
+        document.getElementById(row.id).appendChild(selectMultipleBtn);
+
+        if (row.id === 'row2') {
+            selectMultipleButtonInstanceTop = selectMultipleBtn;
+        } else if (row.id === 'row5') {
+            selectMultipleButtonInstanceBottom = selectMultipleBtn;
+        }
+    }
+  });
 
   let allCells = {};
   let selectedCell = null;
@@ -124,213 +244,13 @@
   let isMultipleSelectionMode = false;
   let selectedCellsForMultiple = new Set();
   let displayHistoryTimeout = null;
+
+  // Biến và logic mới cho bảng thống kê
   let isSelectCarMode = false;
   let selectedCarLabel = null;
   let carHistory = {};
+  const HISTORY_LIMIT = 10;
 
-  function createCells(containerId, start, end) {
-    const container = document.getElementById(containerId);
-    for (let i = start; i <= end; i++) {
-      const label = String(i);
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      const undo = document.createElement('div'); undo.className = 'undo'; undo.textContent = '↩';
-      const stop = document.createElement('div'); stop.className = 'stop'; stop.textContent = 'Tắt';
-      const exch = document.createElement('div'); exch.className = 'exchange'; exch.textContent = 'Đổi';
-      const number = document.createElement('div'); number.className = 'number'; number.textContent = label;
-      const time = document.createElement('div'); time.className = 'time';
-      const contentWrapper = document.createElement('div');
-      contentWrapper.className = 'cell-content-wrapper';
-      contentWrapper.append(number, time);
-      
-      undo.onclick = (e) => { e.stopPropagation(); undoCell(label); };
-      stop.onclick = (e) => { e.stopPropagation(); resetCell(label); };
-      exch.onclick = (e) => { e.stopPropagation(); startExchange(label); };
-      cell.onclick = () => selectCell(label);
-      
-      cell.append(undo, stop, exch, contentWrapper);
-      container.appendChild(cell);
-      
-      allCells[label] = { cell, timer: null, remaining: 0, lastState: null, origin: null, timeEl: time, numberEl: number, duration: 0, startTime: 0, isExpiredAndNotCleared: false, originalMinutes: 0 };
-    }
-  }
-
-  createCells('main-cells-container', 1, 160);
-
-  function resetCell(label) {
-    const cellData = allCells[label];
-    sendCommand(label, "OFF");
-    if (cellData.remaining > 0 || cellData.isExpiredAndNotCleared) {
-        if (cellData.duration > 0 && cellData.startTime > 0) {
-            cellData.lastState = { durationSeconds: cellData.duration, originalMinutes: cellData.originalMinutes, origin: cellData.origin, startTime: cellData.startTime, remaining: cellData.remaining };
-            recordHistory(label, cellData.startTime, Date.now() + serverTimeOffset, cellData.originalMinutes);
-        }
-    }
-    remove(ref(database, 'timers/' + label));
-    if (selectedCell === label) clearSelected();
-  }
-
-  function startTimer(label, durationSeconds, originalMinutes, origin=null) {
-    sendCommand(label, "OFF"); // Tắt ngay khi bấm số phút
-    set(ref(database, 'timers/' + label), { 
-        durationSeconds: Math.floor(durationSeconds), 
-        originalMinutes: originalMinutes, 
-        origin: origin, 
-        startTime: serverTimestamp() 
-    });
-  }
-
-  function selectCell(label) {
-    if (isSelectCarMode) {
-      if (selectedCarLabel === label) { selectedCarLabel = null; clearStatsDisplay(); }
-      else { selectedCarLabel = label; document.getElementById('stats-car-number').textContent = label; document.getElementById('stats-selected-car').textContent = `Ô ${label}`; updateStatsDisplay(label); }
-      isSelectCarMode = false; selectCarButton.classList.remove('active'); return;
-    }
-    if (exchangeFrom) { transferTimer(exchangeFrom, label); return; }
-    if (isMultipleSelectionMode) {
-      if (selectedCellsForMultiple.has(label)) { selectedCellsForMultiple.delete(label); allCells[label].cell.classList.remove('selected'); }
-      else { selectedCellsForMultiple.add(label); allCells[label].cell.classList.add('selected'); }
-    } else {
-      if (displayHistoryTimeout) { clearTimeout(displayHistoryTimeout); displayHistoryTimeout = null; }
-      if (selectedCell === label) { selectedCell = null; allCells[label].cell.classList.remove('selected'); updateDisplay(label, allCells[label].remaining); }
-      else { clearSelected(); selectedCell = label; allCells[label].cell.classList.add('selected');
-          const cellData = allCells[label];
-          if (cellData.originalMinutes > 0 && cellData.startTime !== 0) {
-              const startTime = new Date(cellData.startTime + serverTimeOffset);
-              cellData.numberEl.classList.add('display-line-1'); cellData.timeEl.classList.add('display-line-2');
-              cellData.numberEl.textContent = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`;
-              cellData.timeEl.textContent = `M ${cellData.originalMinutes}`;
-              displayHistoryTimeout = setTimeout(() => { updateDisplay(label, cellData.remaining); displayHistoryTimeout = null; }, 5000);
-          } else { updateDisplay(label, cellData.remaining); }
-      }
-    }
-  }
-
-  function selectMinute(min) {
-    if (isMultipleSelectionMode) {
-      selectedCellsForMultiple.forEach(label => {
-        if (!(allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared)) startTimer(label, min * 60, min, null);
-      });
-      toggleMultipleSelectionMode();
-    } else {
-      if (!selectedCell) return;
-      if (allCells[selectedCell].remaining > 0 || allCells[selectedCell].isExpiredAndNotCleared) return;
-      startTimer(selectedCell, min * 60, min, null);
-      clearSelected();
-    }
-  }
-
-  function updateDisplay(label, sec) {
-    const cellData = allCells[label];
-    const min = Math.floor(sec / 60); const secStr = String(sec % 60).padStart(2, '0');
-    cellData.numberEl.classList.remove('display-line-1'); cellData.timeEl.classList.remove('display-line-2');
-    cellData.numberEl.textContent = `${cellData.origin ? '('+cellData.origin+')-' : ''}${label}`;
-    cellData.timeEl.textContent = sec > 0 ? `${min}:${secStr}` : '';
-  }
-
-  function recordHistory(label, startTime, endTime, durationMinutes) {
-      if (durationMinutes === 0) return;
-      const specificHistoryRef = ref(database, 'carHistory/' + label);
-      onValue(specificHistoryRef, (snapshot) => {
-          const currentHistory = snapshot.val() || [];
-          const lastHistory = currentHistory[currentHistory.length - 1];
-          if (!lastHistory || lastHistory.start !== startTime) {
-              currentHistory.push({ start: startTime, end: endTime, duration: durationMinutes });
-              if (currentHistory.length > 10) currentHistory.shift();
-              set(specificHistoryRef, currentHistory);
-          }
-      }, { onlyOnce: true });
-  }
-
-  function undoCell(label) {
-    const last = allCells[label].lastState;
-    if (!last || allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared) return;
-    startTimer(label, last.remaining, last.originalMinutes, last.origin);
-    allCells[label].lastState = null;
-  }
-
-  function startExchange(label) { clearSelected(); exchangeFrom = label; allCells[label].cell.classList.add('selected'); }
-
-  function transferTimer(from, to) {
-    onValue(ref(database, 'timers/' + from), (snapshot) => {
-        const data = snapshot.val();
-        if (data && typeof data.startTime === 'number') {
-            set(ref(database, 'timers/' + to), { durationSeconds: data.durationSeconds, originalMinutes: data.originalMinutes, origin: data.origin || from, startTime: data.startTime })
-            .then(() => { remove(ref(database, 'timers/' + from)); sendCommand(from, "OFF"); });
-        }
-        exchangeFrom = null; clearSelected();
-    }, { onlyOnce: true });
-  }
-
-  function clearSelected() {
-    Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
-    selectedCell = null; exchangeFrom = null; selectedCellsForMultiple.clear();
-  }
-
-  function toggleMultipleSelectionMode() {
-    isMultipleSelectionMode = !isMultipleSelectionMode; clearSelected();
-    selectMultipleBtn.classList.toggle('active', isMultipleSelectionMode);
-  }
-
-  // LOGIC ĐỒNG BỘ CHÍNH
-  onValue(timersRef, (snapshot) => {
-    const firebaseData = snapshot.val() || {};
-    const now = Date.now() + serverTimeOffset;
-
-    Object.keys(allCells).forEach(label => {
-      const cellData = allCells[label];
-      const data = firebaseData[label];
-
-      if (data && data.startTime) {
-        const elapsed = Math.floor((now - data.startTime) / 1000);
-        const remaining = Math.max(0, data.durationSeconds - elapsed);
-
-        if (remaining <= 0) {
-            // Chỉ ON khi thực sự hết thời gian và timer đang tồn tại
-            if (cellData.timer) { clearInterval(cellData.timer); cellData.timer = null; }
-            cellData.cell.classList.add('expired');
-            cellData.timeEl.textContent = '';
-            cellData.remaining = 0;
-            cellData.isExpiredAndNotCleared = true;
-            sendCommand(label, "ON");
-        } else {
-            cellData.cell.classList.remove('expired');
-            cellData.isExpiredAndNotCleared = false;
-            sendCommand(label, "OFF"); // Đảm bảo luôn OFF khi còn thời gian
-
-            if (cellData.remaining !== remaining || !cellData.timer) {
-                if (cellData.timer) clearInterval(cellData.timer);
-                cellData.remaining = remaining;
-                cellData.duration = data.durationSeconds;
-                cellData.startTime = data.startTime;
-                cellData.originalMinutes = data.originalMinutes;
-                cellData.origin = data.origin;
-                updateDisplay(label, remaining);
-
-                cellData.timer = setInterval(() => {
-                    const curNow = Date.now() + serverTimeOffset;
-                    const curRem = Math.max(0, cellData.duration - Math.floor((curNow - cellData.startTime) / 1000));
-                    cellData.remaining = curRem;
-                    updateDisplay(label, curRem);
-                    if (curRem <= 0) { 
-                        clearInterval(cellData.timer); cellData.timer = null; 
-                        cellData.cell.classList.add('expired'); cellData.isExpiredAndNotCleared = true;
-                        sendCommand(label, "ON");
-                    }
-                }, 1000);
-            }
-        }
-      } else {
-        if (cellData.timer) { clearInterval(cellData.timer); cellData.timer = null; }
-        cellData.cell.classList.remove('expired');
-        cellData.timeEl.textContent = '';
-        cellData.numberEl.textContent = label;
-        cellData.remaining = 0;
-        cellData.isExpiredAndNotCleared = false;
-        sendCommand(label, "OFF");
-      }
-    });
-  });
 
   const selectCarButton = document.getElementById('select-car-button');
   selectCarButton.addEventListener('click', () => {
@@ -339,9 +259,512 @@
     clearStatsDisplay();
   });
 
+
+  function createCells(rowId, list) {
+    list.forEach(label => {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+
+      const undo = document.createElement('div');
+      undo.className = 'undo';
+      undo.textContent = '↩';
+
+      const stop = document.createElement('div');
+      stop.className = 'stop';
+      stop.textContent = 'Tắt';
+
+      const exch = document.createElement('div');
+      exch.className = 'exchange';
+      exch.textContent = 'Đổi';
+
+      const number = document.createElement('div');
+      number.className = 'number';
+      number.textContent = label;
+
+      const time = document.createElement('div');
+      time.className = 'time';
+
+      const contentWrapper = document.createElement('div');
+      contentWrapper.className = 'cell-content-wrapper';
+      contentWrapper.append(number, time);
+
+      undo.onclick = (e) => { e.stopPropagation(); undoCell(label); };
+      stop.onclick = (e) => { e.stopPropagation(); resetCell(label); };
+      exch.onclick = (e) => { e.stopPropagation(); startExchange(label); };
+      cell.onclick = () => selectCell(label);
+
+      cell.append(undo, stop, exch, contentWrapper);
+      document.getElementById(rowId).appendChild(cell);
+      // Thêm originalMinutes để lưu giá trị ban đầu
+      allCells[label] = { cell, timer: null, remaining: 0, lastState: null, origin: null, timeEl: time, numberEl: number, duration: 0, startTime: 0, isExpiredAndNotCleared: false, originalMinutes: 0 };
+    });
+  }
+
+  // Tạo 160 ô số liên tục từ 1 đến 160
+createCells('row3', Array.from({length:160},(_,i)=>''+(i+1)));
+
+  function selectCell(label) {
+    if (isSelectCarMode) {
+      if (selectedCarLabel === label) {
+        selectedCarLabel = null;
+        clearStatsDisplay();
+      } else {
+        selectedCarLabel = label;
+        document.getElementById('stats-car-number').textContent = label;
+        document.getElementById('stats-selected-car').textContent = `Ô ${label}`;
+        // Luôn hiển thị toàn bộ lịch sử đã lưu khi chọn xe
+        updateStatsDisplay(label);
+      }
+      isSelectCarMode = false;
+      selectCarButton.classList.remove('active');
+      return;
+    }
+
+    if (exchangeFrom) {
+      transferTimer(exchangeFrom, label);
+      return;
+    }
+
+    if (isMultipleSelectionMode) {
+      if (selectedCellsForMultiple.has(label)) {
+        selectedCellsForMultiple.delete(label);
+        allCells[label].cell.classList.remove('selected');
+      } else {
+        selectedCellsForMultiple.add(label);
+        allCells[label].cell.classList.add('selected');
+      }
+      selectedCell = null;
+    } else {
+      if (displayHistoryTimeout) {
+          clearTimeout(displayHistoryTimeout);
+          displayHistoryTimeout = null;
+      }
+
+      if (selectedCell === label) {
+          selectedCell = null;
+          allCells[label].cell.classList.remove('selected');
+          updateDisplay(label, allCells[label].remaining);
+      } else {
+          clearSelected();
+          selectedCell = label;
+          allCells[label].cell.classList.add('selected');
+
+          const cellData = allCells[label];
+
+          if (cellData.originalMinutes > 0 && typeof cellData.startTime === 'number' && cellData.startTime !== 0) {
+              const selectedMinutes = cellData.originalMinutes;
+              const startTime = new Date(cellData.startTime + serverTimeOffset);
+              const hours = String(startTime.getHours()).padStart(2, '0');
+              const minutes = String(startTime.getMinutes()).padStart(2, '0');
+
+              cellData.numberEl.classList.add('display-line-1');
+              cellData.timeEl.classList.add('display-line-2');
+
+              cellData.numberEl.textContent = `${hours}:${minutes}`;
+              cellData.timeEl.textContent = `M ${selectedMinutes}`;
+
+              displayHistoryTimeout = setTimeout(() => {
+                  updateDisplay(label, cellData.remaining);
+                  displayHistoryTimeout = null;
+              }, 5000);
+          } else {
+               updateDisplay(label, cellData.remaining);
+          }
+      }
+    }
+  }
+
+  function selectMinute(min) {
+    if (isMultipleSelectionMode) {
+      if (selectedCellsForMultiple.size === 0) {
+        alert("Vui lòng chọn ít nhất một ô đếm ngược trước khi chọn phút.");
+        return;
+      }
+
+      const cellsToUpdate = [];
+      selectedCellsForMultiple.forEach(label => {
+        if (allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared) {
+            console.warn(`[selectMinute] Cell ${label} is running or expired, skipping setting timer in multiple mode.`);
+        } else {
+            cellsToUpdate.push(label);
+        }
+      });
+
+      if (cellsToUpdate.length > 0) {
+          const durationSeconds = min * 60;
+          cellsToUpdate.forEach(label => {
+              startTimer(label, durationSeconds, min, null);
+          });
+      } else {
+          alert("Tất cả các ô bạn chọn đều đang có thời gian chạy hoặc đã hết giờ. Vui lòng chọn các ô chưa chạy.");
+      }
+
+      toggleMultipleSelectionMode();
+    } else {
+      if (!selectedCell) {
+          return;
+      }
+      if (allCells[selectedCell].remaining > 0 || allCells[selectedCell].isExpiredAndNotCleared) {
+          alert(`Ô ${selectedCell} đang có thời gian chạy hoặc đã hết giờ. Vui lòng tắt trước khi đặt thời gian mới.`);
+          clearSelected();
+          return;
+      }
+      const durationSeconds = min * 60;
+      startTimer(selectedCell, durationSeconds, min, null);
+    }
+  }
+
+  function resetCellLocalStateAndVisual(label) {
+    const cellData = allCells[label];
+    if (!cellData) {
+        return;
+    }
+
+    clearTimer(label);
+
+    cellData.remaining = 0;
+    cellData.origin = null;
+    cellData.duration = 0;
+    cellData.startTime = 0;
+    cellData.isExpiredAndNotCleared = false;
+    cellData.originalMinutes = 0;
+
+    cellData.cell.classList.remove('expired', 'selected');
+    cellData.numberEl.classList.remove('display-line-1');
+    cellData.timeEl.classList.remove('display-line-2');
+
+    cellData.timeEl.textContent = '';
+    cellData.numberEl.textContent = label;
+  }
+  
+  // Thêm tham số originalMinutes vào hàm startTimer
+  function startTimer(label, durationSeconds, originalMinutes, origin=null) {
+    set(ref(database, 'timers/' + label), {
+      durationSeconds: durationSeconds,
+      originalMinutes: originalMinutes,
+      origin: origin,
+      startTime: serverTimestamp()
+    }).catch(error => {
+      console.error("Error writing data to Firebase:", error);
+    });
+  }
+
+  function updateDisplay(label, sec) {
+    const cellData = allCells[label];
+    if (!cellData) return;
+    const min = Math.floor(sec / 60);
+    const secStr = String(sec % 60).padStart(2, '0');
+    const origin = cellData.origin ? `(${cellData.origin})-` : '';
+
+    cellData.numberEl.classList.remove('display-line-1');
+    cellData.timeEl.classList.remove('display-line-2');
+
+    cellData.numberEl.textContent = `${origin}${label}`;
+    cellData.timeEl.textContent = sec > 0 ? `${min}:${secStr}` : '';
+  }
+
+  // Hàm mới để ghi lịch sử, giảm thiểu trùng lặp code
+  function recordHistory(label, startTime, endTime, durationMinutes) {
+      if (durationMinutes === 0) return; // Không ghi lịch sử nếu số phút là 0
+      const historyPath = 'carHistory/' + label;
+      const newHistoryItem = {
+          start: startTime,
+          end: endTime,
+          duration: durationMinutes // Sử dụng giá trị nguyên, đã được lưu
+      };
+
+      onValue(ref(database, historyPath), (snapshot) => {
+          const currentHistory = snapshot.val() || [];
+          const lastHistory = currentHistory[currentHistory.length - 1];
+          if (!lastHistory || lastHistory.start !== newHistoryItem.start) {
+              currentHistory.push(newHistoryItem);
+              if (currentHistory.length > HISTORY_LIMIT) {
+                  currentHistory.shift();
+              }
+              set(ref(database, historyPath), currentHistory)
+              .catch(error => {
+                  console.error("Lỗi khi cập nhật lịch sử lên Firebase:", error);
+              });
+          }
+      }, { onlyOnce: true });
+  }
+
+  function resetCell(label) {
+    const cellData = allCells[label];
+    if (cellData.duration > 0 && cellData.startTime > 0) {
+        cellData.lastState = { durationSeconds: cellData.duration, originalMinutes: cellData.originalMinutes, origin: cellData.origin, startTime: cellData.startTime, remaining: cellData.remaining };
+    }
+    
+    // Ghi lịch sử khi người dùng bấm nút "Tắt"
+    if (cellData.remaining > 0 || cellData.isExpiredAndNotCleared) {
+        let endTime = Date.now() + serverTimeOffset;
+        let durationMinutes = cellData.originalMinutes; // FIX: Always use original minutes
+        recordHistory(label, cellData.startTime, endTime, durationMinutes);
+    }
+    
+    // Luôn xóa dữ liệu khỏi Firebase khi bấm "Tắt"
+    remove(ref(database, 'timers/' + label)).catch(error => {
+      console.error("Lỗi khi xóa dữ liệu khỏi Firebase:", error);
+    });
+  }
+
+  function undoCell(label) {
+    const last = allCells[label].lastState;
+    if (!last) {
+      return;
+    }
+    // Kiểm tra xem ô có đang chạy không trước khi hoàn tác
+    if (allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared) {
+        alert(`Ô ${label} đang có thời gian chạy hoặc đã hết giờ. Vui lòng tắt trước khi thực hiện Hoàn tác.`);
+        return;
+    }
+    clearSelected();
+    // Bắt đầu lại timer với dữ liệu đã lưu trong lastState
+    startTimer(label, last.remaining, last.originalMinutes, last.origin);
+    // Xóa lastState sau khi đã hoàn tác
+    allCells[label].lastState = null;
+  }
+
+  function startExchange(label) {
+    if (isMultipleSelectionMode) {
+        toggleMultipleSelectionMode();
+    }
+    clearSelected();
+    exchangeFrom = label;
+    allCells[label].cell.classList.add('selected');
+  }
+
+  function transferTimer(from, to) {
+    if (from === to) {
+      clearSelected();
+      exchangeFrom = null;
+      return;
+    }
+
+    const sourceCellData = allCells[from];
+    const destCellData = allCells[to];
+
+    if (destCellData.remaining > 0 || destCellData.isExpiredAndNotCleared) {
+      alert(`Ô ${to} đang có thời gian chạy hoặc đã hết giờ. Vui lòng tắt trước khi đổi.`);
+      clearSelected();
+      exchangeFrom = null;
+      return;
+    }
+
+    const sourceTimerRef = ref(database, 'timers/' + from);
+    onValue(sourceTimerRef, (snapshot) => {
+        const sourceTimerData = snapshot.val();
+        if (sourceTimerData && typeof sourceTimerData.startTime === 'number') {
+            set(ref(database, 'timers/' + to), {
+                durationSeconds: sourceTimerData.durationSeconds,
+                originalMinutes: sourceTimerData.originalMinutes,
+                origin: sourceTimerData.origin || from,
+                startTime: sourceTimerData.startTime,
+            }).then(() => {
+                remove(sourceTimerRef);
+            }).catch(error => {
+                console.error("Lỗi khi chuyển dữ liệu sang ô đích:", error);
+            }).finally(() => {
+                clearSelected();
+                exchangeFrom = null;
+            });
+        } else {
+            clearSelected();
+            exchangeFrom = null;
+        }
+    }, { onlyOnce: true });
+  }
+
+  function saveLastState(label) {
+    const cell = allCells[label];
+    if (cell.duration > 0) {
+      cell.lastState = { durationSeconds: cell.duration, originalMinutes: cell.originalMinutes, origin: cell.origin, startTime: cell.startTime, remaining: cell.remaining };
+    } else {
+      cell.lastState = null;
+    }
+  }
+
+  function clearTimer(label) {
+    if (allCells[label].timer) {
+        clearInterval(allCells[label].timer);
+        allCells[label].timer = null;
+    }
+  }
+
+  function clearSelected() {
+    Object.values(allCells).forEach(c => c.cell.classList.remove('selected'));
+    selectedCell = null;
+    exchangeFrom = null;
+    selectedCellsForMultiple.clear();
+    if (displayHistoryTimeout) {
+        clearTimeout(displayHistoryTimeout);
+        displayHistoryTimeout = null;
+    }
+    Object.keys(allCells).forEach(label => {
+        const cellData = allCells[label];
+        updateDisplay(label, cellData.remaining);
+    });
+  }
+
+  function toggleMultipleSelectionMode() {
+    isMultipleSelectionMode = !isMultipleSelectionMode;
+    clearSelected();
+
+    if (selectMultipleButtonInstanceTop) {
+        selectMultipleButtonInstanceTop.classList.toggle('active', isMultipleSelectionMode);
+    }
+    if (selectMultipleButtonInstanceBottom) {
+        selectMultipleButtonInstanceBottom.classList.toggle('active', isMultipleSelectionMode);
+    }
+  }
+
+  let serverTimeOffset = 0;
+
+  onValue(ref(database, '.info/serverTimeOffset'), function(snap) {
+    serverTimeOffset = snap.val();
+  });
+
+  // Lắng nghe sự thay đổi trên cả bảng đếm ngược và bảng lịch sử
+  onValue(timersRef, (snapshot) => {
+    const firebaseData = snapshot.val() || {};
+    const clientTimeAdjusted = Date.now() + serverTimeOffset;
+
+    const currentLabels = new Set(Object.keys(firebaseData));
+    const previousLabels = new Set(Object.keys(allCells).filter(label => allCells[label].remaining > 0 || allCells[label].isExpiredAndNotCleared));
+
+    const allLabels = new Set([...currentLabels, ...previousLabels]);
+    
+    allLabels.forEach(label => {
+      const cellData = allCells[label];
+      if (!cellData) return;
+
+      const dataFromFirebase = firebaseData[label];
+
+      if (dataFromFirebase && typeof dataFromFirebase.startTime === 'number' && dataFromFirebase.durationSeconds !== undefined && dataFromFirebase.originalMinutes !== undefined) {
+        if (dataFromFirebase.startTime === null || dataFromFirebase.startTime === 0) {
+            resetCellLocalStateAndVisual(label);
+            return;
+        }
+
+        const timeElapsed = Math.floor((clientTimeAdjusted - dataFromFirebase.startTime) / 1000);
+        const calculatedRemaining = Math.max(0, dataFromFirebase.durationSeconds - timeElapsed);
+
+        const isExpiredByCalculation = calculatedRemaining <= 0;
+
+        if (isExpiredByCalculation) {
+            // Trường hợp ô hết giờ
+            // Dữ liệu vẫn còn trên Firebase, chỉ thay đổi trạng thái hiển thị
+            clearTimer(label);
+            cellData.cell.classList.add('expired');
+            cellData.numberEl.classList.remove('display-line-1');
+            cellData.timeEl.classList.remove('display-line-2');
+            cellData.timeEl.textContent = '';
+            cellData.remaining = 0;
+            cellData.duration = dataFromFirebase.durationSeconds;
+            cellData.originalMinutes = dataFromFirebase.originalMinutes;
+            cellData.isExpiredAndNotCleared = true; // Đánh dấu là đã hết giờ và chưa được xóa
+            cellData.startTime = dataFromFirebase.startTime;
+            cellData.origin = dataFromFirebase.origin;
+        } else {
+            // Trường hợp ô đang chạy bình thường
+            cellData.cell.classList.remove('expired');
+            cellData.isExpiredAndNotCleared = false;
+
+            const needsFullUpdate = (
+              cellData.remaining !== calculatedRemaining ||
+              cellData.origin !== dataFromFirebase.origin ||
+              cellData.duration !== dataFromFirebase.durationSeconds ||
+              cellData.timer === null
+            );
+
+            if (needsFullUpdate) {
+                clearTimer(label);
+                cellData.remaining = calculatedRemaining;
+                cellData.origin = dataFromFirebase.origin;
+                cellData.duration = dataFromFirebase.durationSeconds;
+                cellData.originalMinutes = dataFromFirebase.originalMinutes;
+                cellData.startTime = dataFromFirebase.startTime;
+
+                if (displayHistoryTimeout === null || selectedCell !== label) {
+                    updateDisplay(label, calculatedRemaining);
+                }
+
+                if (calculatedRemaining > 0) {
+                    cellData.timer = setInterval(() => {
+                        const currentElapsed = Math.floor(((Date.now() + serverTimeOffset) - cellData.startTime) / 1000);
+                        const currentRemaining = Math.max(0, cellData.duration - currentElapsed);
+
+                        cellData.remaining = currentRemaining;
+                        if (displayHistoryTimeout === null || selectedCell !== label) {
+                            updateDisplay(label, currentRemaining);
+                        }
+
+                        if (currentRemaining <= 0) {
+                            clearInterval(cellData.timer);
+                            cellData.timer = null;
+                            cellData.timeEl.textContent = '';
+                            cellData.cell.classList.add('expired');
+                            cellData.isExpiredAndNotCleared = true;
+                        }
+                    }, 1000);
+                }
+            }
+        }
+      } else {
+        // Trường hợp không có dữ liệu trên Firebase (do bấm nút "Tắt"), reset lại trạng thái cục bộ
+        if (!(selectedCell === label && displayHistoryTimeout !== null)) {
+            resetCellLocalStateAndVisual(label);
+        } else {
+            clearTimer(label);
+            cellData.cell.classList.remove('expired');
+        }
+      }
+
+      if (selectedCell === label || exchangeFrom === label || selectedCellsForMultiple.has(label)) {
+          allCells[label].cell.classList.add('selected');
+      } else {
+          allCells[label].cell.classList.remove('selected');
+      }
+    });
+    
+    // Đảm bảo trạng thái `selected` được xóa nếu ô đã hết giờ hoặc không tồn tại
+    const checkIfExpiredOrGone = (label) => {
+        const data = firebaseData[label];
+        if (!data || typeof data.startTime !== 'number' || data.startTime === null || data.durationSeconds === undefined) {
+            return true;
+        }
+        const timeElapsed = Math.floor((clientTimeAdjusted - data.startTime) / 1000);
+        return Math.max(0, data.durationSeconds - timeElapsed) <= 0;
+    };
+
+    if (selectedCell && checkIfExpiredOrGone(selectedCell)) {
+        if (allCells[selectedCell]) allCells[selectedCell].cell.classList.remove('selected');
+        selectedCell = null;
+        if (displayHistoryTimeout) {
+            clearTimeout(displayHistoryTimeout);
+            displayHistoryTimeout = null;
+        }
+    }
+    if (exchangeFrom && checkIfExpiredOrGone(exchangeFrom)) {
+        if (allCells[exchangeFrom]) allCells[exchangeFrom].cell.classList.remove('selected');
+        exchangeFrom = null;
+    }
+    selectedCellsForMultiple.forEach(label => {
+        if (checkIfExpiredOrGone(label)) {
+            selectedCellsForMultiple.delete(label);
+            if (allCells[label]) {
+                allCells[label].cell.classList.remove('selected');
+            }
+        }
+    });
+  });
+
+  // Lắng nghe sự thay đổi của lịch sử trên Firebase để cập nhật bảng thống kê
   onValue(historyRef, (snapshot) => {
       carHistory = snapshot.val() || {};
-      if (selectedCarLabel) updateStatsDisplay(selectedCarLabel);
+      if (selectedCarLabel) {
+          updateStatsDisplay(selectedCarLabel);
+      }
   });
 
   function updateStatsDisplay(label) {
@@ -349,19 +772,40 @@
     const startTimesEl = document.getElementById('stats-start-times');
     const endTimesEl = document.getElementById('stats-end-times');
     const durationEl = document.getElementById('stats-duration');
-    startTimesEl.innerHTML = ''; endTimesEl.innerHTML = ''; durationEl.innerHTML = '';
+
+    startTimesEl.innerHTML = '';
+    endTimesEl.innerHTML = '';
+    durationEl.innerHTML = '';
+
     history.forEach(item => {
-      const start = new Date(item.start); const end = new Date(item.end);
-      const sDiv = document.createElement('div'); sDiv.className = 'history-time'; sDiv.textContent = `${String(start.getHours()).padStart(2,'0')}:${String(start.getMinutes()).padStart(2,'0')}`; startTimesEl.appendChild(sDiv);
-      const eDiv = document.createElement('div'); eDiv.className = 'history-time'; eDiv.textContent = `${String(end.getHours()).padStart(2,'0')}:${String(end.getMinutes()).padStart(2,'0')}`; endTimesEl.appendChild(eDiv);
-      const dDiv = document.createElement('div'); dDiv.className = 'history-time'; dDiv.textContent = item.duration; durationEl.appendChild(dDiv);
+      const startTime = new Date(item.start);
+      const endTime = new Date(item.end);
+
+      const startDiv = document.createElement('div');
+      startDiv.className = 'history-time';
+      startDiv.textContent = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`;
+      startTimesEl.appendChild(startDiv);
+
+      const endDiv = document.createElement('div');
+      endDiv.className = 'history-time';
+      endDiv.textContent = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`;
+      endTimesEl.appendChild(endDiv);
+
+      const durationDiv = document.createElement('div');
+      durationDiv.className = 'history-time';
+      durationDiv.textContent = item.duration; // Dùng giá trị nguyên
+      durationEl.appendChild(durationDiv);
     });
   }
 
   function clearStatsDisplay() {
-    document.getElementById('stats-car-number').textContent = ''; document.getElementById('stats-selected-car').textContent = '';
-    document.getElementById('stats-start-times').innerHTML = ''; document.getElementById('stats-end-times').innerHTML = ''; document.getElementById('stats-duration').innerHTML = '';
+    document.getElementById('stats-car-number').textContent = '';
+    document.getElementById('stats-selected-car').textContent = '';
+    document.getElementById('stats-start-times').innerHTML = '';
+    document.getElementById('stats-end-times').innerHTML = '';
+    document.getElementById('stats-duration').innerHTML = '';
   }
+
 </script>
 </body>
 </html>
